@@ -1,0 +1,341 @@
+// =============================================================================
+// WEPL (We Plan) - 만능 여행 공동 플래너 & 다이어리
+// Database Schema - Prisma 6 (Node 20.17 호환)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// 1. 사용자 (User)
+// =============================================================================
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String?  @map("password_hash") // 이메일 가입 시 bcrypt 해시, 소셜 로그인은 null
+  nickname       String
+  profileImageUrl String? @map("profile_image_url")
+  provider       AuthProvider @default(EMAIL)
+  providerId     String?  @map("provider_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tripMembers     TripMember[]
+  wishlistPlaces  WishlistPlace[]
+  comments        Comment[]
+  expenses        Expense[]       // 결제자로서의 지출
+  expenseSplits   ExpenseSplit[]  // 정산 대상으로서의 분담
+  checklistItems  ChecklistItem[]
+  diaryEntries    DiaryEntry[]
+  diaryPhotos     DiaryPhoto[]
+
+  @@map("users")
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  APPLE
+  KAKAO
+}
+
+// =============================================================================
+// 2. 여행 방 (Trip)
+// =============================================================================
+model Trip {
+  id          String     @id @default(cuid())
+  title       String     // 예: "오사카 먹방 투어 2026"
+  theme       String?    // 테마 태그 (예: "먹방", "힐링", "액티비티")
+  coverImageUrl String?  @map("cover_image_url")
+  startDate   DateTime?  @map("start_date") @db.Date
+  endDate     DateTime?  @map("end_date") @db.Date
+  timezone    String     @default("Asia/Seoul") // 여행지 타임존
+  currency    String     @default("KRW")        // 기본 통화
+  inviteCode  String     @unique @map("invite_code") // 초대 코드
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  members          TripMember[]
+  wishlistPlaces   WishlistPlace[]
+  timelineSchedules TimelineSchedule[]
+  expenses         Expense[]
+
+  @@map("trips")
+}
+
+// =============================================================================
+// 3. 여행 참여자 (TripMember) - User ↔ Trip 다대다
+// =============================================================================
+model TripMember {
+  id       String       @id @default(cuid())
+  userId   String       @map("user_id")
+  tripId   String       @map("trip_id")
+  role     TripRole     @default(MEMBER)
+  joinedAt DateTime     @default(now()) @map("joined_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tripId])
+  @@map("trip_members")
+}
+
+enum TripRole {
+  OWNER   // 방장
+  EDITOR  // 편집 가능
+  MEMBER  // 일반 참여자
+}
+
+// =============================================================================
+// 4. 위시리스트 장소 (WishlistPlace) - 아이디어 보드 카드
+// =============================================================================
+model WishlistPlace {
+  id          String        @id @default(cuid())
+  tripId      String        @map("trip_id")
+  createdById String        @map("created_by_id")
+  category    PlaceCategory
+  name        String
+  address     String?
+  description String?       @db.Text
+  imageUrl    String?       @map("image_url")
+  externalUrl String?       @map("external_url") // 네이버/구글 맵 링크
+  googlePlaceId String?     @map("google_place_id") // Google Places API ID
+
+  // 좌표 데이터: 별도 Float 컬럼 + PostGIS GEOGRAPHY 컬럼 병행
+  // Float 컬럼은 Prisma ORM으로 직접 접근, geography 컬럼은 Raw Query에서 공간 연산용
+  latitude    Float?
+  longitude   Float?
+  // PostGIS geography(Point, 4326) 컬럼은 마이그레이션 SQL에서 수동 추가
+  // location GEOGRAPHY(Point, 4326)
+
+  rating      Float?        // 사용자 평점 (1-5)
+  priceLevel  Int?          @map("price_level") // 가격대 (1-4)
+  isPlaced    Boolean       @default(false) @map("is_placed") // 타임라인에 배치 여부
+
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  trip      Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdBy User   @relation(fields: [createdById], references: [id])
+  comments  Comment[]
+  schedules TimelineSchedule[]
+
+  @@index([tripId, category])
+  @@index([tripId, isPlaced])
+  @@map("wishlist_places")
+}
+
+enum PlaceCategory {
+  ACTIVITY      // 액티비티
+  ACCOMMODATION // 숙소
+  ATTRACTION    // 관광지
+  RESTAURANT    // 식당
+  CAFE          // 카페
+}
+
+// =============================================================================
+// 5. 코멘트 / 꿀팁 스레드 (Comment)
+// =============================================================================
+model Comment {
+  id              String   @id @default(cuid())
+  wishlistPlaceId String   @map("wishlist_place_id")
+  userId          String   @map("user_id")
+  content         String   @db.Text
+  parentId        String?  @map("parent_id") // 대댓글 (Self-referencing)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  wishlistPlace WishlistPlace @relation(fields: [wishlistPlaceId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id])
+  parent        Comment?      @relation("CommentThread", fields: [parentId], references: [id])
+  replies       Comment[]     @relation("CommentThread")
+
+  @@index([wishlistPlaceId])
+  @@map("comments")
+}
+
+// =============================================================================
+// 6. 타임라인 일정 카드 (TimelineSchedule) - 카멜레온 카드
+// =============================================================================
+// 이 카드는 여행 전에는 '체크리스트 모드', 여행 당일/이후에는 '다이어리 모드'로 전환됩니다.
+// 모드 전환은 프론트엔드에서 startDate와 현재 날짜를 비교하여 결정합니다.
+// =============================================================================
+model TimelineSchedule {
+  id               String    @id @default(cuid())
+  tripId           String    @map("trip_id")
+  wishlistPlaceId  String?   @map("wishlist_place_id") // 위시리스트 카드 연결 (nullable: 자유 일정)
+  date             DateTime  @db.Date  // 배치된 날짜
+  startTime        String?   @map("start_time")  // "09:00" (사용자 수동 입력)
+  endTime          String?   @map("end_time")    // "11:30"
+  orderIndex       Int       @map("order_index") // 같은 날짜 내 정렬 순서
+  memo             String?   @db.Text  // 자유 메모
+
+  // 카멜레온 카드 - 커스텀 제목/설명 (위시리스트 없이 직접 입력 시)
+  customTitle      String?   @map("custom_title")
+  customAddress    String?   @map("custom_address")
+  customLatitude   Float?    @map("custom_latitude")
+  customLongitude  Float?    @map("custom_longitude")
+
+  // 카드 상태
+  status           ScheduleStatus @default(PLANNED)
+
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  trip           Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  wishlistPlace  WishlistPlace?  @relation(fields: [wishlistPlaceId], references: [id], onDelete: SetNull)
+  checklistItems ChecklistItem[]
+  diaryEntries   DiaryEntry[]
+  expenses       Expense[]
+
+  @@index([tripId, date])
+  @@index([tripId, date, orderIndex])
+  @@map("timeline_schedules")
+}
+
+enum ScheduleStatus {
+  PLANNED    // 예정
+  ONGOING    // 진행 중
+  COMPLETED  // 완료
+  SKIPPED    // 건너뜀
+}
+
+// =============================================================================
+// 7. 체크리스트 (ChecklistItem) - 카멜레온 카드: 준비물 모드
+// =============================================================================
+model ChecklistItem {
+  id               String   @id @default(cuid())
+  scheduleId       String   @map("schedule_id")
+  createdById      String   @map("created_by_id")
+  content          String
+  isChecked        Boolean  @default(false) @map("is_checked")
+  assignedToUserId String?  @map("assigned_to_user_id") // 담당자
+  orderIndex       Int      @default(0) @map("order_index")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  schedule  TimelineSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  createdBy User             @relation(fields: [createdById], references: [id])
+
+  @@index([scheduleId])
+  @@map("checklist_items")
+}
+
+// =============================================================================
+// 8. 다이어리 항목 (DiaryEntry) - 카멜레온 카드: 다이어리 모드
+// =============================================================================
+model DiaryEntry {
+  id         String   @id @default(cuid())
+  scheduleId String   @map("schedule_id")
+  userId     String   @map("user_id")
+  content    String?  @db.Text  // 일기 텍스트
+  mood       Mood?    // 기분 이모지
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  schedule TimelineSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id])
+  photos   DiaryPhoto[]
+
+  @@index([scheduleId])
+  @@map("diary_entries")
+}
+
+enum Mood {
+  AMAZING    // 🤩
+  HAPPY      // 😊
+  NEUTRAL    // 😐
+  TIRED      // 😴
+  SAD        // 😢
+}
+
+// =============================================================================
+// 9. 다이어리 사진 (DiaryPhoto)
+// =============================================================================
+model DiaryPhoto {
+  id           String   @id @default(cuid())
+  diaryEntryId String   @map("diary_entry_id")
+  uploadedById String   @map("uploaded_by_id")
+  imageUrl     String   @map("image_url")
+  thumbnailUrl String?  @map("thumbnail_url")
+  caption      String?
+  orderIndex   Int      @default(0) @map("order_index")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  diaryEntry DiaryEntry @relation(fields: [diaryEntryId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation(fields: [uploadedById], references: [id])
+
+  @@index([diaryEntryId])
+  @@map("diary_photos")
+}
+
+// =============================================================================
+// 10. 지출 / 가계부 (Expense)
+// =============================================================================
+model Expense {
+  id               String          @id @default(cuid())
+  tripId           String          @map("trip_id")
+  scheduleId       String?         @map("schedule_id") // 타임라인 카드 연결 (자동 카테고리 매핑)
+  paidById         String          @map("paid_by_id")  // 결제자
+  amount           Decimal         @db.Decimal(12, 2)
+  currency         String          @default("KRW")
+  description      String
+  category         ExpenseCategory
+  receiptImageUrl  String?         @map("receipt_image_url")
+  paidAt           DateTime        @default(now()) @map("paid_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  trip     Trip              @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  schedule TimelineSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  paidBy   User              @relation(fields: [paidById], references: [id])
+  splits   ExpenseSplit[]
+
+  @@index([tripId])
+  @@index([tripId, category])
+  @@map("expenses")
+}
+
+enum ExpenseCategory {
+  FOOD          // 식비
+  TRANSPORT     // 교통
+  ACCOMMODATION // 숙박
+  ACTIVITY      // 액티비티/입장료
+  SHOPPING      // 쇼핑
+  ETC           // 기타
+}
+
+// =============================================================================
+// 11. 지출 분담 (ExpenseSplit) - N빵 정산
+// =============================================================================
+model ExpenseSplit {
+  id        String  @id @default(cuid())
+  expenseId String  @map("expense_id")
+  userId    String  @map("user_id")
+  amount    Decimal @db.Decimal(12, 2) // 분담 금액
+  isPaid    Boolean @default(false) @map("is_paid") // 정산 완료 여부
+
+  // Relations
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([expenseId, userId])
+  @@index([userId, isPaid])
+  @@map("expense_splits")
+}
