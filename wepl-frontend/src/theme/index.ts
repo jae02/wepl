@@ -270,6 +270,6 @@ export const animation = {
 
 export type ColorScheme = 'light' | 'dark';
 
-export function getThemeColors(scheme: ColorScheme) {
+export function getThemeColors(scheme: string | null | undefined) {
   return scheme === 'dark' ? colors.dark : colors.light;
 }
