@@ -8,11 +8,13 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSchedules } from '@/hooks/useSchedules';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   PLANNED: { label: '예정', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
@@ -37,6 +39,7 @@ export default function TimelineScreen() {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
+  const { isDesktop, isWeb } = useResponsive();
 
   const { data: schedules, isLoading, refetch, isRefetching } = useSchedules(tripId);
 
@@ -193,13 +196,13 @@ export default function TimelineScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: ds.bg }]}>
+    <View style={[styles.container, { backgroundColor: ds.bg }, isDesktop && styles.desktopPageContainer]}>
       {/* 날짜 선택 */}
       {dates.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dateSelector}
+          contentContainerStyle={[styles.dateSelector, isDesktop && { maxWidth: 800, width: '100%' as any, alignSelf: 'center' as const }]}
           style={styles.dateSelectorScroll}
         >
           {dates.map((dateStr) => {
@@ -215,6 +218,8 @@ export default function TimelineScreen() {
                     backgroundColor: isActive ? '#667eea' : ds.chipBg,
                     borderColor: isActive ? '#667eea' : ds.chipBorder,
                   },
+                  isDesktop && styles.desktopDateChip,
+                  isWeb && ({ cursor: 'pointer' } as any),
                 ]}
               >
                 <Text
@@ -252,6 +257,7 @@ export default function TimelineScreen() {
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 40 + insets.bottom },
+            isDesktop && { maxWidth: 800, width: '100%' as any, alignSelf: 'center' as const },
           ]}
           ListEmptyComponent={renderEmpty}
           refreshControl={
@@ -411,5 +417,14 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  // 데스크톱 반응형 스타일
+  desktopPageContainer: {
+    alignItems: 'center' as const,
+  },
+  desktopDateChip: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    minWidth: 85,
   },
 });

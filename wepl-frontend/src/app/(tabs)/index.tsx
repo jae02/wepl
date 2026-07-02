@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTrips, useCreateTrip, useJoinTrip } from '@/hooks/useTrips';
+import { useResponsive } from '@/hooks/useResponsive';
 
 // 여행 테마 → 그라데이션 색상 매핑
 const THEME_GRADIENTS: Record<string, [string, string]> = {
@@ -60,6 +61,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
+  const { isDesktop, isWeb, contentMaxWidth, gridColumns } = useResponsive();
 
   const user = useAuthStore((s) => s.user);
   const { data: trips, isLoading, refetch, isRefetching } = useTrips();
@@ -169,6 +171,8 @@ export default function HomeScreen() {
             borderColor: dynamicStyles.cardBorder,
           },
           pressed && styles.tripCardPressed,
+          isDesktop && styles.desktopTripCard,
+          isWeb && ({ cursor: 'pointer' } as any),
         ]}
       >
         {/* 카드 상단 그라데이션 바 */}
@@ -237,9 +241,9 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: dynamicStyles.background }]}>
+    <View style={[styles.container, { backgroundColor: dynamicStyles.background }, isDesktop && styles.desktopPageContainer]}>
       {/* 헤더 */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }, isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const }]}>
         <View>
           <Text style={[styles.greeting, { color: dynamicStyles.textSecondary }]}>
             안녕하세요, {user?.nickname ?? '여행자'}님 👋
@@ -260,9 +264,13 @@ export default function HomeScreen() {
           data={trips ?? []}
           keyExtractor={(item) => item.id}
           renderItem={renderTripCard}
+          key={isDesktop ? `grid-${gridColumns}` : 'list'}
+          numColumns={isDesktop ? gridColumns : 1}
+          columnWrapperStyle={isDesktop && gridColumns > 1 ? styles.desktopGridRow : undefined}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 100 + insets.bottom },
+            isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const },
           ]}
           ListEmptyComponent={renderEmpty}
           refreshControl={
@@ -322,7 +330,7 @@ export default function HomeScreen() {
 
       <Pressable
         onPress={() => setShowFABMenu(!showFABMenu)}
-        style={[styles.fab, { bottom: 24 + insets.bottom }]}
+        style={[styles.fab, { bottom: 24 + insets.bottom }, isWeb && ({ cursor: 'pointer' } as any)]}
       >
         <LinearGradient
           colors={['#667eea', '#764ba2']}
@@ -344,11 +352,11 @@ export default function HomeScreen() {
         onRequestClose={() => setShowCreateModal(false)}
       >
         <Pressable
-          style={[styles.modalOverlay, { backgroundColor: dynamicStyles.overlayBg }]}
+          style={[styles.modalOverlay, { backgroundColor: dynamicStyles.overlayBg }, isDesktop && styles.desktopModalOverlay]}
           onPress={() => setShowCreateModal(false)}
         >
           <Pressable
-            style={[styles.modalContent, { backgroundColor: dynamicStyles.modalBg }]}
+            style={[styles.modalContent, { backgroundColor: dynamicStyles.modalBg }, isDesktop && styles.desktopModalContent]}
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalHandle} />
@@ -457,11 +465,11 @@ export default function HomeScreen() {
         onRequestClose={() => setShowJoinModal(false)}
       >
         <Pressable
-          style={[styles.modalOverlay, { backgroundColor: dynamicStyles.overlayBg }]}
+          style={[styles.modalOverlay, { backgroundColor: dynamicStyles.overlayBg }, isDesktop && styles.desktopModalOverlay]}
           onPress={() => setShowJoinModal(false)}
         >
           <Pressable
-            style={[styles.modalContent, { backgroundColor: dynamicStyles.modalBg }]}
+            style={[styles.modalContent, { backgroundColor: dynamicStyles.modalBg }, isDesktop && styles.desktopModalContent]}
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalHandle} />
@@ -763,5 +771,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  // 데스크톱 반응형 스타일
+  desktopPageContainer: {
+    alignItems: 'center' as const,
+  },
+  desktopGridRow: {
+    gap: 14,
+  },
+  desktopTripCard: {
+    flex: 1,
+  },
+  desktopModalOverlay: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  desktopModalContent: {
+    borderRadius: 20,
+    maxWidth: 480,
+    width: '90%' as any,
   },
 });

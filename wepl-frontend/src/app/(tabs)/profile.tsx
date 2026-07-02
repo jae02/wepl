@@ -1,7 +1,8 @@
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
+import { useResponsive } from '@/hooks/useResponsive';
 
 /** 프로필 화면 */
 export default function ProfileScreen() {
@@ -10,6 +11,7 @@ export default function ProfileScreen() {
   const isDark = scheme === 'dark';
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const { isDesktop, isWeb } = useResponsive();
 
   const initial = user?.nickname?.charAt(0)?.toUpperCase() ?? '?';
 
@@ -38,6 +40,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: ds.bg }]}>
+      <View style={[styles.desktopWrapper, isDesktop && styles.desktopWrapperActive]}>
       <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
         {/* 프로필 아바타 */}
         <View style={styles.avatarSection}>
@@ -87,10 +90,12 @@ export default function ProfileScreen() {
             styles.logoutButton,
             { borderColor: 'rgba(239, 68, 68, 0.3)' },
             pressed && styles.logoutButtonPressed,
+            isWeb && ({ cursor: 'pointer' } as any),
           ]}
         >
           <Text style={styles.logoutText}>로그아웃</Text>
         </Pressable>
+      </View>
       </View>
     </View>
   );
@@ -183,5 +188,15 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 15,
     fontWeight: '700',
+  },
+  // 데스크톱 반응형 스타일
+  desktopWrapper: {
+    flex: 1,
+    width: '100%' as any,
+  },
+  desktopWrapperActive: {
+    maxWidth: 600,
+    alignSelf: 'center' as const,
+    paddingHorizontal: 40,
   },
 });

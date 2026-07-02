@@ -6,10 +6,12 @@ import {
   StyleSheet,
   Animated as RNAnimated,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { Slot, useRouter, useLocalSearchParams, useSegments } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 type TabKey = 'wishlist' | 'timeline' | 'expense';
 
@@ -28,6 +30,7 @@ export default function TripDetailLayout() {
   const { width } = useWindowDimensions();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
+  const { isDesktop, isWeb, contentMaxWidth } = useResponsive();
 
   // 현재 활성 탭 계산
   const currentSegment = segments[segments.length - 1] as TabKey | undefined;
@@ -36,7 +39,8 @@ export default function TripDetailLayout() {
     : 'wishlist';
 
   const indicatorAnim = useRef(new RNAnimated.Value(0)).current;
-  const tabWidth = (width - 48) / TABS.length;
+  const effectiveTabBarWidth = isDesktop ? Math.min(width - 48, contentMaxWidth) : width - 48;
+  const tabWidth = effectiveTabBarWidth / TABS.length;
 
   // 탭 변경 시 인디케이터 애니메이션
   const activeIndex = TABS.findIndex((t) => t.key === activeTab);
@@ -78,7 +82,7 @@ export default function TripDetailLayout() {
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => router.back()}
-            style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.6 }]}
+            style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.6 }, isWeb && ({ cursor: 'pointer' } as any)]}
             hitSlop={12}
           >
             <Text style={[styles.backIcon, { color: ds.textPrimary }]}>←</Text>
@@ -90,7 +94,7 @@ export default function TripDetailLayout() {
         </View>
 
         {/* 탭 바 */}
-        <View style={[styles.tabBar, { backgroundColor: ds.tabBg }]}>
+        <View style={[styles.tabBar, { backgroundColor: ds.tabBg }, isDesktop && { maxWidth: contentMaxWidth, alignSelf: 'center' as const, width: '100%' as any }]}>
           {/* 인디케이터 */}
           <RNAnimated.View
             style={[
@@ -105,11 +109,12 @@ export default function TripDetailLayout() {
             <Pressable
               key={tab.key}
               onPress={() => handleTabPress(tab.key)}
-              style={[styles.tab, { width: tabWidth }]}
+              style={[styles.tab, { width: tabWidth }, isWeb && ({ cursor: 'pointer' } as any)]}
             >
               <Text
                 style={[
                   styles.tabLabel,
+                  isDesktop && styles.desktopTabLabel,
                   {
                     color:
                       activeTab === tab.key ? '#667eea' : ds.textSecondary,
@@ -186,6 +191,10 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 13,
+  },
+  // 데스크톱 반응형 스타일
+  desktopTabLabel: {
+    fontSize: 15,
   },
   content: {
     flex: 1,

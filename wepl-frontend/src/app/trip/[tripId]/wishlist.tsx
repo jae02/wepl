@@ -17,6 +17,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useWishlist, useAddWishlistItem } from '@/hooks/useWishlist';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const CATEGORIES = [
   { key: 'ALL', label: '전체', icon: '📋' },
@@ -42,6 +43,7 @@ export default function WishlistScreen() {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
+  const { isDesktop, isWeb, contentMaxWidth, gridColumns } = useResponsive();
 
   const { data: wishlistItems, isLoading, refetch, isRefetching } = useWishlist(tripId);
   const addMutation = useAddWishlistItem(tripId);
@@ -129,6 +131,7 @@ export default function WishlistScreen() {
         style={[
           styles.wishlistCard,
           { backgroundColor: ds.cardBg, borderColor: ds.cardBorder },
+          isDesktop && styles.desktopWishlistCard,
         ]}
       >
         <View style={styles.cardHeader}>
@@ -204,12 +207,12 @@ export default function WishlistScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: ds.bg }]}>
+    <View style={[styles.container, { backgroundColor: ds.bg }, isDesktop && styles.desktopPageContainer]}>
       {/* 카테고리 필터 */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterContainer}
+        contentContainerStyle={[styles.filterContainer, isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const, paddingHorizontal: 32 }]}
         style={styles.filterScroll}
       >
         {CATEGORIES.map((cat) => {
@@ -224,6 +227,7 @@ export default function WishlistScreen() {
                   backgroundColor: isActive ? '#667eea' : ds.chipBg,
                   borderColor: isActive ? '#667eea' : ds.chipBorder,
                 },
+                isWeb && ({ cursor: 'pointer' } as any),
               ]}
             >
               <Text
@@ -249,9 +253,13 @@ export default function WishlistScreen() {
           data={filteredItems}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
+          key={isDesktop ? `grid-${gridColumns}` : 'list'}
+          numColumns={isDesktop ? gridColumns : 1}
+          columnWrapperStyle={isDesktop && gridColumns > 1 ? styles.desktopGridRow : undefined}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 100 + insets.bottom },
+            isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const, paddingHorizontal: 32 },
           ]}
           ListEmptyComponent={renderEmpty}
           refreshControl={
@@ -272,7 +280,7 @@ export default function WishlistScreen() {
           resetForm();
           setShowAddModal(true);
         }}
-        style={[styles.fab, { bottom: 24 + insets.bottom }]}
+        style={[styles.fab, { bottom: 24 + insets.bottom }, isWeb && ({ cursor: 'pointer' } as any)]}
       >
         <LinearGradient
           colors={['#667eea', '#764ba2']}
@@ -290,11 +298,11 @@ export default function WishlistScreen() {
         onRequestClose={() => setShowAddModal(false)}
       >
         <Pressable
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, isDesktop && styles.desktopModalOverlay]}
           onPress={() => setShowAddModal(false)}
         >
           <Pressable
-            style={[styles.modalContent, { backgroundColor: ds.modalBg }]}
+            style={[styles.modalContent, { backgroundColor: ds.modalBg }, isDesktop && styles.desktopModalContent]}
             onPress={(e) => e.stopPropagation()}
           >
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -740,5 +748,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  // 데스크톱 반응형 스타일
+  desktopPageContainer: {
+    alignItems: 'center' as const,
+  },
+  desktopGridRow: {
+    gap: 12,
+  },
+  desktopWishlistCard: {
+    flex: 1,
+  },
+  desktopModalOverlay: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  desktopModalContent: {
+    borderRadius: 20,
+    maxWidth: 520,
+    width: '90%' as any,
   },
 });

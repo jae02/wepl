@@ -16,12 +16,14 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLogin } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/auth.store';
+import { useResponsive } from '@/hooks/useResponsive';
 
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const loginMutation = useLogin();
   const authLogin = useAuthStore((s) => s.login);
+  const { isDesktop, isWeb } = useResponsive();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -70,13 +72,14 @@ export default function LoginScreen() {
         style={StyleSheet.absoluteFill}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'web' ? undefined : 'height'}
         style={styles.flex}
       >
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 40 },
+            isDesktop && styles.scrollContentDesktop,
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -95,6 +98,7 @@ export default function LoginScreen() {
             <Text style={styles.appTagline}>함께 만드는 완벽한 여행</Text>
           </RNAnimated.View>
 
+          <View style={isDesktop ? styles.desktopFormCard : undefined}>
           {/* 에러 메시지 */}
           {error ? (
             <View style={styles.errorContainer}>
@@ -138,7 +142,7 @@ export default function LoginScreen() {
               />
               <Pressable
                 onPress={() => setShowPassword(!showPassword)}
-                style={styles.visibilityToggle}
+                style={[styles.visibilityToggle, isWeb && ({ cursor: 'pointer' } as any)]}
                 hitSlop={8}
               >
                 <Text style={styles.visibilityIcon}>
@@ -156,6 +160,7 @@ export default function LoginScreen() {
               styles.loginButton,
               pressed && styles.loginButtonPressed,
               loginMutation.isPending && styles.loginButtonDisabled,
+              isWeb && ({ cursor: 'pointer' } as any),
             ]}
           >
             <LinearGradient
@@ -175,13 +180,14 @@ export default function LoginScreen() {
           {/* 회원가입 링크 */}
           <Pressable
             onPress={() => router.push('/signup')}
-            style={styles.signupLink}
+            style={[styles.signupLink, isWeb && ({ cursor: 'pointer' } as any)]}
           >
             <Text style={styles.signupLinkText}>
               계정이 없으신가요?{' '}
               <Text style={styles.signupLinkHighlight}>회원가입</Text>
             </Text>
           </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -326,4 +332,21 @@ const styles = StyleSheet.create({
     color: '#a78bfa',
     fontWeight: '600',
   },
+  // 데스크톱 반응형 스타일
+  scrollContentDesktop: {
+    alignItems: 'center' as const,
+  },
+  desktopFormCard: {
+    width: '100%' as any,
+    maxWidth: 440,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+  } as any,
 });

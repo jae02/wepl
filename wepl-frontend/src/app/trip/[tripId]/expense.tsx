@@ -22,6 +22,7 @@ import {
   useExpenseStats,
   useAddExpense,
 } from '@/hooks/useExpenses';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const EXPENSE_CATEGORIES = [
   { key: 'FOOD', label: '식비', icon: '🍽️', color: '#f5576c' },
@@ -48,6 +49,7 @@ export default function ExpenseScreen() {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
+  const { isDesktop, isWeb, contentMaxWidth } = useResponsive();
 
   const { data: expenses, isLoading, refetch, isRefetching } = useExpenses(tripId);
   const { data: summary } = useExpenseSummary(tripId);
@@ -128,12 +130,15 @@ export default function ExpenseScreen() {
 
   const renderHeader = () => (
     <View>
+      {/* 정산 요약 + 카테고리 통계 */}
+      <View style={isDesktop ? styles.desktopStatsRow : undefined}>
       {/* 정산 요약 */}
       {summary && summary.length > 0 && (
         <View
           style={[
             styles.summaryCard,
             { backgroundColor: ds.cardBg, borderColor: ds.cardBorder },
+            isDesktop && styles.desktopStatsCard,
           ]}
         >
           <Text style={[styles.summaryTitle, { color: ds.textPrimary }]}>
@@ -180,6 +185,7 @@ export default function ExpenseScreen() {
           style={[
             styles.statsCard,
             { backgroundColor: ds.cardBg, borderColor: ds.cardBorder },
+            isDesktop && styles.desktopStatsCard,
           ]}
         >
           <Text style={[styles.statsTitle, { color: ds.textPrimary }]}>
@@ -214,6 +220,7 @@ export default function ExpenseScreen() {
           })}
         </View>
       )}
+      </View>
 
       {/* 총 지출 */}
       {totalAmount > 0 && (
@@ -298,7 +305,7 @@ export default function ExpenseScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: ds.bg }]}>
+    <View style={[styles.container, { backgroundColor: ds.bg }, isDesktop && styles.desktopPageContainer]}>
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#667eea" />
@@ -311,6 +318,7 @@ export default function ExpenseScreen() {
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 100 + insets.bottom },
+            isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const },
           ]}
           ListHeaderComponent={renderHeader}
           ListEmptyComponent={renderEmpty}
@@ -332,7 +340,7 @@ export default function ExpenseScreen() {
           resetForm();
           setShowAddModal(true);
         }}
-        style={[styles.fab, { bottom: 24 + insets.bottom }]}
+        style={[styles.fab, { bottom: 24 + insets.bottom }, isWeb && ({ cursor: 'pointer' } as any)]}
       >
         <LinearGradient
           colors={['#667eea', '#764ba2']}
@@ -350,11 +358,11 @@ export default function ExpenseScreen() {
         onRequestClose={() => setShowAddModal(false)}
       >
         <Pressable
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, isDesktop && styles.desktopModalOverlay]}
           onPress={() => setShowAddModal(false)}
         >
           <Pressable
-            style={[styles.modalContent, { backgroundColor: ds.modalBg }]}
+            style={[styles.modalContent, { backgroundColor: ds.modalBg }, isDesktop && styles.desktopModalContent]}
             onPress={(e) => e.stopPropagation()}
           >
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -826,5 +834,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  // 데스크톱 반응형 스타일
+  desktopPageContainer: {
+    alignItems: 'center' as const,
+  },
+  desktopStatsRow: {
+    flexDirection: 'row' as const,
+    gap: 14,
+  },
+  desktopStatsCard: {
+    flex: 1,
+  },
+  desktopModalOverlay: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  desktopModalContent: {
+    borderRadius: 20,
+    maxWidth: 520,
+    width: '90%' as any,
   },
 });

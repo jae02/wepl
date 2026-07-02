@@ -16,12 +16,14 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSignup } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/auth.store';
+import { useResponsive } from '@/hooks/useResponsive';
 
 export default function SignupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const signupMutation = useSignup();
   const authLogin = useAuthStore((s) => s.login);
+  const { isDesktop, isWeb } = useResponsive();
 
   const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
@@ -147,13 +149,14 @@ export default function SignupScreen() {
         style={StyleSheet.absoluteFill}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'web' ? undefined : 'height'}
         style={styles.flex}
       >
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 },
+            isDesktop && styles.scrollContentDesktop,
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -169,6 +172,7 @@ export default function SignupScreen() {
             <Text style={styles.headerSubtitle}>WEPL과 함께 여행을 시작하세요</Text>
           </RNAnimated.View>
 
+          <View style={isDesktop ? styles.desktopFormCard : undefined}>
           {/* 에러 메시지 */}
           {error ? (
             <View style={styles.errorContainer}>
@@ -204,6 +208,7 @@ export default function SignupScreen() {
               styles.signupButton,
               pressed && styles.signupButtonPressed,
               signupMutation.isPending && styles.signupButtonDisabled,
+              isWeb && ({ cursor: 'pointer' } as any),
             ]}
           >
             <LinearGradient
@@ -223,13 +228,14 @@ export default function SignupScreen() {
           {/* 로그인 링크 */}
           <Pressable
             onPress={() => router.back()}
-            style={styles.loginLink}
+            style={[styles.loginLink, isWeb && ({ cursor: 'pointer' } as any)]}
           >
             <Text style={styles.loginLinkText}>
               이미 계정이 있으신가요?{' '}
               <Text style={styles.loginLinkHighlight}>로그인</Text>
             </Text>
           </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -358,4 +364,21 @@ const styles = StyleSheet.create({
     color: '#a78bfa',
     fontWeight: '600',
   },
+  // 데스크톱 반응형 스타일
+  scrollContentDesktop: {
+    alignItems: 'center' as const,
+  },
+  desktopFormCard: {
+    width: '100%' as any,
+    maxWidth: 440,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+  } as any,
 });
