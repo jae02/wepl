@@ -627,11 +627,12 @@ export default function TimelineWebScreen() {
 
         <View style={styles.body}>
           {/* 좌측 날짜 패널 */}
-          <View
+          <ScrollView
             style={[
               styles.datePanel,
-              { backgroundColor: theme.card, borderColor: theme.border },
+              { backgroundColor: theme.card, borderColor: theme.border, maxHeight: '100%' },
             ]}
+            showsVerticalScrollIndicator={false}
           >
             <Text style={[styles.datePanelTitle, { color: theme.textSecondary }]}>
               📆 날짜 선택
@@ -687,7 +688,7 @@ export default function TimelineWebScreen() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
 
           {/* 우측 타임라인 or 지도 */}
           {viewMode === 'map' ? (
