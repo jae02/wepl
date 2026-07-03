@@ -520,7 +520,7 @@ export default function WebHomeScreen() {
               />
             </View>
           </View>
-          {newStartDate && newEndDate && (
+          {!!newStartDate && !!newEndDate && (
             <View style={[styles.datePreview, { backgroundColor: colors.primary[500] + '10' }]}>
               <Text style={[styles.datePreviewText, { color: colors.primary[500] }]}>
                 📅 {formatDateRange(newStartDate, newEndDate)}
