@@ -11,12 +11,15 @@ import api from '@/lib/api';
 export interface WishlistItem {
   id: string;
   tripId: string;
-  title: string;
+  name: string;
   category: string;
+  address?: string;
   description: string | null;
   url: string | null;
   imageUrl: string | null;
   rating: number | null;
+  latitude?: number;
+  longitude?: number;
   createdById: string;
   createdAt: string;
   updatedAt: string;
@@ -93,6 +96,20 @@ export function useDeleteWishlistItem(tripId: string) {
         queryKey: [...wishlistKeys.all, 'list', tripId],
       });
     },
+  });
+}
+
+/**
+ * 주변 추천 장소 조회
+ */
+export function useRecommendPlaces(tripId: string, lat?: number, lng?: number, radius?: number) {
+  return useQuery({
+    queryKey: [...wishlistKeys.all, 'recommend', tripId, lat, lng, radius],
+    queryFn: () =>
+      api.get<WishlistItem[]>(`/api/v1/trips/${tripId}/wishlist/recommend`, {
+        params: { lat, lng, radius },
+      }),
+    enabled: !!tripId && lat !== undefined && lng !== undefined,
   });
 }
 

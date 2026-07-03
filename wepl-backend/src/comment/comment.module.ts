@@ -6,8 +6,10 @@ import { Module } from '@nestjs/common';
 import { CommentController } from './comment.controller';
 import { CommentService } from './comment.service';
 import { TripMemberGuard } from '../trip/guards/trip-member.guard';
+import { SyncModule } from '../sync/sync.module';
 
 @Module({
+  imports: [SyncModule],
   controllers: [CommentController],
   providers: [CommentService, TripMemberGuard],
   exports: [CommentService],

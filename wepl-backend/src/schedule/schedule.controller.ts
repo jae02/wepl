@@ -117,6 +117,21 @@ export class ScheduleController {
   }
 
   /**
+   * PATCH /api/v1/trips/:tripId/schedules/:scheduleId/swap
+   * 일정 순서 맞바꿈 (위/아래 이동)
+   */
+  @Patch(':scheduleId/swap')
+  async swap(
+    @Param('scheduleId') scheduleId: string,
+    @Body('targetScheduleId') targetScheduleId: string,
+  ) {
+    if (!targetScheduleId) {
+      throw new BadRequestException('targetScheduleId가 필요합니다.');
+    }
+    return this.scheduleService.swap(scheduleId, targetScheduleId);
+  }
+
+  /**
    * DELETE /api/v1/trips/:tripId/schedules/:scheduleId
    * 일정 삭제
    */

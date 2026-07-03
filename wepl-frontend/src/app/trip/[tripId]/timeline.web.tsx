@@ -16,7 +16,7 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
-import { useSchedules, useScheduleDates, useUpdateSchedule } from '@/hooks/useSchedules';
+import { useSchedules, useScheduleDates, useUpdateSchedule, useSwapSchedule } from '@/hooks/useSchedules';
 import {
   useChecklist,
   useCreateChecklistItem,
@@ -24,6 +24,9 @@ import {
   useDeleteChecklistItem,
 } from '@/hooks/useChecklist';
 import type { ChecklistItem } from '@/hooks/useChecklist';
+import { useJsApiLoader, GoogleMap, Marker, Polyline } from '@react-google-maps/api';
+
+const LIBRARIES: any = ['places'];
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -225,18 +228,23 @@ function ChecklistPanel({
 
 function ScheduleCard({
   item,
+  index,
+  schedules,
   tripId,
   isLast,
   isDark,
   theme,
 }: {
   item: any;
+  index: number;
+  schedules: any[];
   tripId: string;
   isLast: boolean;
   isDark: boolean;
   theme: ReturnType<typeof getThemeColors>;
 }) {
   const updateSchedule = useUpdateSchedule(tripId);
+  const swapSchedule = useSwapSchedule(tripId);
 
   // ── Expand / Tab State ──
   const [expanded, setExpanded] = useState(false);
@@ -377,6 +385,53 @@ function ScheduleCard({
               )}
             </View>
             <View style={styles.headerRight}>
+              <View style={styles.swapButtons}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (index > 0) {
+                      swapSchedule.mutate({
+                        scheduleId: item.id,
+                        targetScheduleId: schedules[index - 1].id,
+                      });
+                    }
+                  }}
+                  disabled={index === 0}
+                  style={({ hovered }: any) => [
+                    styles.swapButton,
+                    index === 0 && styles.swapButtonDisabled,
+                    hovered && index > 0 && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
+                    { cursor: index === 0 ? 'not-allowed' : 'pointer' } as any,
+                  ]}
+                >
+                  <Text style={[styles.swapButtonText, { color: theme.textSecondary }, index === 0 && { color: theme.textTertiary }]}>
+                    ▲ 위로
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (!isLast) {
+                      swapSchedule.mutate({
+                        scheduleId: item.id,
+                        targetScheduleId: schedules[index + 1].id,
+                      });
+                    }
+                  }}
+                  disabled={isLast}
+                  style={({ hovered }: any) => [
+                    styles.swapButton,
+                    isLast && styles.swapButtonDisabled,
+                    hovered && !isLast && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' },
+                    { cursor: isLast ? 'not-allowed' : 'pointer' } as any,
+                  ]}
+                >
+                  <Text style={[styles.swapButtonText, { color: theme.textSecondary }, isLast && { color: theme.textTertiary }]}>
+                    ▼ 아래로
+                  </Text>
+                </Pressable>
+              </View>
+
               <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
                 <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
               </View>
@@ -484,6 +539,12 @@ function ScheduleCard({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function TimelineWebScreen() {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries: LIBRARIES,
+  });
+
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const scheme = useColorScheme() ?? 'dark';
   const isDark = scheme === 'dark';
@@ -491,17 +552,39 @@ export default function TimelineWebScreen() {
 
   const { data: dates, isLoading: datesLoading } = useScheduleDates(tripId ?? '');
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<'timeline' | 'map'>('timeline');
   const { data: schedules, isLoading } = useSchedules(tripId ?? '', selectedDate);
+
+  const mapPath = useMemo(() => {
+    return (schedules ?? [])
+      .filter((s: any) => s.wishlistPlace?.latitude && s.wishlistPlace?.longitude)
+      .map((s: any) => ({ lat: s.wishlistPlace.latitude, lng: s.wishlistPlace.longitude }));
+  }, [schedules]);
+
+  const mapCenter = useMemo(() => {
+    if (mapPath.length > 0) return mapPath[0];
+    return { lat: 37.5665, lng: 126.9780 };
+  }, [mapPath]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.inner}>
         {/* 헤더 */}
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>📅 타임라인</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            여행 일정을 시간순으로 확인하세요
-          </Text>
+        <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+          <View>
+            <Text style={[styles.title, { color: theme.text }]}>📅 타임라인</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              여행 일정을 시간순으로 확인하세요
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={() => setViewMode('timeline')} style={[styles.viewToggleBtn, viewMode === 'timeline' && { backgroundColor: colors.primary[500], borderColor: colors.primary[500] }]}>
+              <Text style={[styles.viewToggleText, { color: viewMode === 'timeline' ? '#fff' : theme.textSecondary }]}>타임라인</Text>
+            </Pressable>
+            <Pressable onPress={() => setViewMode('map')} style={[styles.viewToggleBtn, viewMode === 'map' && { backgroundColor: colors.primary[500], borderColor: colors.primary[500] }]}>
+              <Text style={[styles.viewToggleText, { color: viewMode === 'map' ? '#fff' : theme.textSecondary }]}>지도 보기</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.body}>
@@ -568,8 +651,41 @@ export default function TimelineWebScreen() {
             })}
           </View>
 
-          {/* 우측 타임라인 */}
-          <ScrollView style={styles.timelineArea} contentContainerStyle={styles.timelineContent}>
+          {/* 우측 타임라인 or 지도 */}
+          {viewMode === 'map' ? (
+            <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: theme.border, minHeight: 600 }}>
+              {isLoaded ? (
+                <GoogleMap
+                  mapContainerStyle={{ width: '100%', height: '100%' }}
+                  center={mapCenter}
+                  zoom={12}
+                >
+                  {mapPath.length > 0 && (
+                    <Polyline
+                      path={mapPath}
+                      options={{ strokeColor: colors.primary[500], strokeWeight: 4 }}
+                    />
+                  )}
+                  {(schedules ?? []).map((item: any, index: number) => {
+                    const lat = item.wishlistPlace?.latitude;
+                    const lng = item.wishlistPlace?.longitude;
+                    if (!lat || !lng) return null;
+                    return (
+                      <Marker
+                        key={item.id}
+                        position={{ lat, lng }}
+                        label={{ text: String(index + 1), color: '#fff', fontWeight: 'bold' }}
+                        title={item.wishlistPlace?.name ?? item.customTitle ?? '제목 없음'}
+                      />
+                    );
+                  })}
+                </GoogleMap>
+              ) : (
+                <ActivityIndicator size="large" color={colors.primary[500]} style={{ marginTop: 60 }} />
+              )}
+            </View>
+          ) : (
+            <ScrollView style={styles.timelineArea} contentContainerStyle={styles.timelineContent}>
             {isLoading ? (
               <ActivityIndicator
                 size="large"
@@ -593,6 +709,8 @@ export default function TimelineWebScreen() {
                 <ScheduleCard
                   key={item.id}
                   item={item}
+                  index={index}
+                  schedules={schedules ?? []}
                   tripId={tripId ?? ''}
                   isLast={index === (schedules ?? []).length - 1}
                   isDark={isDark}
@@ -601,6 +719,7 @@ export default function TimelineWebScreen() {
               ))
             )}
           </ScrollView>
+          )}
         </View>
       </View>
     </View>
@@ -623,6 +742,8 @@ const styles = StyleSheet.create({
   header: { marginBottom: 24 },
   title: { fontSize: 28, fontWeight: '700' },
   subtitle: { fontSize: 14, marginTop: 4 },
+  viewToggleBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'transparent', cursor: 'pointer' },
+  viewToggleText: { fontSize: 14, fontWeight: '600' },
   body: { flexDirection: 'row', flex: 1, gap: 24 },
 
   /* Date Panel */
@@ -691,6 +812,10 @@ const styles = StyleSheet.create({
   timeSep: { fontSize: 14, fontWeight: '600' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 12, fontWeight: '700' },
+  swapButtons: { flexDirection: 'row', gap: 4, marginRight: 4 },
+  swapButton: { paddingVertical: 4, paddingHorizontal: 6, borderRadius: 6 },
+  swapButtonDisabled: { opacity: 0.5 },
+  swapButtonText: { fontSize: 12, fontWeight: '600' },
   cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
   cardAddress: { fontSize: 13, marginBottom: 8 },
   memoClickable: { paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, marginLeft: -8, marginBottom: 4 },

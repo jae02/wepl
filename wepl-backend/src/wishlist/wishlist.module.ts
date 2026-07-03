@@ -6,8 +6,10 @@
 import { Module } from '@nestjs/common';
 import { WishlistController } from './wishlist.controller';
 import { WishlistService } from './wishlist.service';
+import { SyncModule } from '../sync/sync.module';
 
 @Module({
+  imports: [SyncModule],
   controllers: [WishlistController],
   providers: [WishlistService],
   exports: [WishlistService],

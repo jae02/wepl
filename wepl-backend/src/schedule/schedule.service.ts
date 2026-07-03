@@ -14,12 +14,16 @@ import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ReorderItemDto } from './dto/reorder-schedule.dto';
 import { ScheduleStatus } from '@prisma/client';
+import { SyncGateway } from '../sync/sync.gateway';
 
 @Injectable()
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly syncGateway: SyncGateway,
+  ) {}
 
   /**
    * 타임라인 일정 생성
@@ -69,6 +73,8 @@ export class ScheduleService {
     this.logger.log(
       `일정 생성 완료: ${schedule.id} (tripId: ${tripId}, date: ${date})`,
     );
+
+    this.syncGateway.server.to(`trip_${tripId}`).emit('scheduleUpdated');
 
     return schedule;
   }
@@ -162,10 +168,14 @@ export class ScheduleService {
     const data: Record<string, any> = { ...rest };
     if (date !== undefined) data.date = new Date(date);
 
-    return this.prisma.timelineSchedule.update({
+    const updated = await this.prisma.timelineSchedule.update({
       where: { id },
       data,
     });
+
+    this.syncGateway.server.to(`trip_${existing.tripId}`).emit('scheduleUpdated');
+
+    return updated;
   }
 
   /**
@@ -180,10 +190,14 @@ export class ScheduleService {
       throw new NotFoundException('일정을 찾을 수 없습니다.');
     }
 
-    return this.prisma.timelineSchedule.update({
+    const updated = await this.prisma.timelineSchedule.update({
       where: { id },
       data: { status },
     });
+
+    this.syncGateway.server.to(`trip_${existing.tripId}`).emit('scheduleUpdated');
+
+    return updated;
   }
 
   /**
@@ -227,6 +241,8 @@ export class ScheduleService {
 
     this.logger.log(`일정 삭제 완료: ${id}`);
 
+    this.syncGateway.server.to(`trip_${existing.tripId}`).emit('scheduleUpdated');
+
     return { deleted: true };
   }
 
@@ -248,8 +264,54 @@ export class ScheduleService {
       `일정 재정렬 완료: tripId=${tripId}, date=${date.toISOString()}, ${items.length}개 항목`,
     );
 
+    this.syncGateway.server.to(`trip_${tripId}`).emit('scheduleUpdated');
+
     // 재정렬 후 해당 날짜의 일정 목록 반환
     return this.findAllByTripAndDate(tripId, date);
+  }
+
+  /**
+   * 두 일정의 순서(orderIndex)를 맞바꿈 (위/아래 화살표 이동)
+   */
+  async swap(id: string, targetId: string) {
+    if (id === targetId) {
+      throw new BadRequestException('같은 일정끼리는 순서를 바꿀 수 없습니다.');
+    }
+
+    const [schedule1, schedule2] = await Promise.all([
+      this.prisma.timelineSchedule.findUnique({ where: { id } }),
+      this.prisma.timelineSchedule.findUnique({ where: { id: targetId } }),
+    ]);
+
+    if (!schedule1 || !schedule2) {
+      throw new NotFoundException('일정을 찾을 수 없습니다.');
+    }
+
+    if (
+      schedule1.tripId !== schedule2.tripId ||
+      schedule1.date.getTime() !== schedule2.date.getTime()
+    ) {
+      throw new BadRequestException(
+        '같은 여행, 같은 날짜의 일정만 순서를 바꿀 수 있습니다.',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.timelineSchedule.update({
+        where: { id: schedule1.id },
+        data: { orderIndex: schedule2.orderIndex },
+      }),
+      this.prisma.timelineSchedule.update({
+        where: { id: schedule2.id },
+        data: { orderIndex: schedule1.orderIndex },
+      }),
+    ]);
+
+    this.logger.log(`일정 순서 맞바꿈 완료: ${schedule1.id} <-> ${schedule2.id}`);
+
+    this.syncGateway.server.to(`trip_${schedule1.tripId}`).emit('scheduleUpdated');
+
+    return { success: true };
   }
 
   /**

@@ -12,6 +12,8 @@ import { Slot, useRouter, useLocalSearchParams, useSegments } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useSocket } from '@/hooks/useSocket';
+
 
 type TabKey = 'wishlist' | 'timeline' | 'expense';
 
@@ -31,6 +33,9 @@ export default function TripDetailLayout() {
   const scheme = useColorScheme();
   const isDark = scheme === 'dark';
   const { isDesktop, isWeb, contentMaxWidth } = useResponsive();
+
+  // 소켓 연결
+  useSocket(tripId);
 
   // 현재 활성 탭 계산
   const currentSegment = segments[segments.length - 1] as TabKey | undefined;

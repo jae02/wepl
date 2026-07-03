@@ -11,6 +11,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
+import { SyncGateway } from '../sync/sync.gateway';
+
 
 /** 댓글·대댓글에 포함할 작성자 정보 select 옵션 */
 const USER_SELECT = {
@@ -21,7 +23,10 @@ const USER_SELECT = {
 
 @Injectable()
 export class CommentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly syncGateway: SyncGateway,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // 댓글 생성 (대댓글 포함)
@@ -45,7 +50,7 @@ export class CommentService {
       }
     }
 
-    return this.prisma.comment.create({
+    const comment = await this.prisma.comment.create({
       data: {
         wishlistPlaceId,
         userId,
@@ -56,6 +61,16 @@ export class CommentService {
         user: { select: USER_SELECT },
       },
     });
+
+    const place = await this.prisma.wishlistPlace.findUnique({
+      where: { id: wishlistPlaceId },
+      select: { tripId: true },
+    });
+    if (place) {
+      this.syncGateway.server.to(`trip_${place.tripId}`).emit('commentUpdated');
+    }
+
+    return comment;
   }
 
   // ---------------------------------------------------------------------------
@@ -99,13 +114,23 @@ export class CommentService {
       throw new ForbiddenException('본인이 작성한 댓글만 수정할 수 있습니다.');
     }
 
-    return this.prisma.comment.update({
+    const updated = await this.prisma.comment.update({
       where: { id: commentId },
       data: { content: dto.content },
       include: {
         user: { select: USER_SELECT },
       },
     });
+
+    const place = await this.prisma.wishlistPlace.findUnique({
+      where: { id: comment.wishlistPlaceId },
+      select: { tripId: true },
+    });
+    if (place) {
+      this.syncGateway.server.to(`trip_${place.tripId}`).emit('commentUpdated');
+    }
+
+    return updated;
   }
 
   // ---------------------------------------------------------------------------
@@ -138,6 +163,15 @@ export class CommentService {
         where: { id: commentId },
       });
     });
+
+    const place = await this.prisma.wishlistPlace.findUnique({
+      where: { id: comment.wishlistPlaceId },
+      select: { tripId: true },
+    });
+
+    if (place) {
+      this.syncGateway.server.to(`trip_${place.tripId}`).emit('commentUpdated');
+    }
 
     return { message: '댓글이 삭제되었습니다.' };
   }

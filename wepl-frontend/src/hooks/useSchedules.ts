@@ -119,3 +119,18 @@ export function useUpdateSchedule(tripId: string) {
     },
   });
 }
+
+/**
+ * 일정 순서 맞바꿈
+ */
+export function useSwapSchedule(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ scheduleId, targetScheduleId }: { scheduleId: string; targetScheduleId: string }) =>
+      api.patch(`/api/v1/trips/${tripId}/schedules/${scheduleId}/swap`, { targetScheduleId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+}

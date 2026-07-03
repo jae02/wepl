@@ -2,7 +2,7 @@
  * 웹 전용 위시리스트 — 카테고리 필터 + 3열 카드 그리드 + 상세 모달 (코멘트 스레드)
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ScrollView,
   TextInput, Modal, ActivityIndicator,
@@ -11,9 +11,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
-import { useWishlist, useCreateWishlistItem, useDeleteWishlistItem } from '@/hooks/useWishlist';
+import { useWishlist, useCreateWishlistItem, useDeleteWishlistItem, useRecommendPlaces } from '@/hooks/useWishlist';
 import { useComments, useCreateComment, useDeleteComment } from '@/hooks/useComments';
 import { useAuthStore } from '@/stores/auth.store';
+import { useJsApiLoader, GoogleMap, Marker, Autocomplete } from '@react-google-maps/api';
+
+const LIBRARIES: any = ['places'];
 
 /* ─── 상수 ───────────────────────────────────────────────────────────────────── */
 
@@ -183,6 +186,7 @@ function DetailModal({
 
   const wishlistId = item?.id ?? '';
   const { data: commentsData, isLoading: commentsLoading } = useComments(tripId, wishlistId);
+  const { data: recommendData, isLoading: recommendLoading } = useRecommendPlaces(tripId, item?.latitude, item?.longitude);
   const createCommentMutation = useCreateComment(tripId, wishlistId);
   const deleteCommentMutation = useDeleteComment(tripId, wishlistId);
 
@@ -352,6 +356,31 @@ function DetailModal({
                     </Text>
                   </View>
                 )}
+
+                {/* 주변 추천 장소 */}
+                <View style={{ marginTop: 24 }}>
+                  <Text style={[dStyles.infoText, { marginBottom: 12, fontSize: 16, fontWeight: '700', color: theme.text }]}>📍 주변 추천 장소</Text>
+                  {recommendLoading ? (
+                    <ActivityIndicator size="small" color={colors.primary[500]} />
+                  ) : recommendData?.length ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                      {recommendData.map((place: any) => (
+                        <View key={place.id} style={{
+                          width: 140, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border,
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.02)'
+                        }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 4 }} numberOfLines={1}>{place.name}</Text>
+                          <Text style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4 }} numberOfLines={1}>{place.address}</Text>
+                          <Text style={{ fontSize: 11, color: theme.textTertiary }}>
+                            거리: {Math.round(place.distance || 0)}m
+                          </Text>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <Text style={{ fontSize: 13, color: theme.textTertiary }}>주변 추천 장소가 없습니다.</Text>
+                  )}
+                </View>
               </View>
             ) : (
               /* ── 코멘트 탭 ── */
@@ -443,6 +472,12 @@ function DetailModal({
 /* ─── 메인 화면 ──────────────────────────────────────────────────────────────── */
 
 export default function WishlistWebScreen() {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries: LIBRARIES,
+  });
+
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const scheme = useColorScheme() ?? 'dark';
   const isDark = scheme === 'dark';
@@ -453,11 +488,30 @@ export default function WishlistWebScreen() {
   const deleteMutation = useDeleteWishlistItem(tripId ?? '');
 
   const [filter, setFilter] = useState('ALL');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [showModal, setShowModal] = useState(false);
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState('RESTAURANT');
   const [formAddress, setFormAddress] = useState('');
+  const [formLat, setFormLat] = useState<number | undefined>();
+  const [formLng, setFormLng] = useState<number | undefined>();
   const [formError, setFormError] = useState('');
+  
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
+  const handlePlaceChanged = () => {
+    if (autocompleteRef.current !== null) {
+      const place = autocompleteRef.current.getPlace();
+      if (place) {
+        setFormName(place.name || '');
+        setFormAddress(place.formatted_address || '');
+        if (place.geometry?.location) {
+          setFormLat(place.geometry.location.lat());
+          setFormLng(place.geometry.location.lng());
+        }
+      }
+    }
+  };
 
   // 상세 모달 상태
   const [detailItem, setDetailItem] = useState<any>(null);
@@ -471,8 +525,14 @@ export default function WishlistWebScreen() {
     setFormError('');
     if (!formName.trim()) { setFormError('장소명을 입력해주세요.'); return; }
     try {
-      await createMutation.mutateAsync({ name: formName.trim(), category: formCategory, address: formAddress.trim() || undefined } as any);
-      setShowModal(false); setFormName(''); setFormAddress(''); refetch();
+      await createMutation.mutateAsync({ 
+        name: formName.trim(), 
+        category: formCategory, 
+        address: formAddress.trim() || undefined,
+        latitude: formLat,
+        longitude: formLng,
+      } as any);
+      setShowModal(false); setFormName(''); setFormAddress(''); setFormLat(undefined); setFormLng(undefined); refetch();
     } catch (e: any) { setFormError(e?.message || '추가 실패'); }
   };
 
@@ -494,11 +554,21 @@ export default function WishlistWebScreen() {
     <ScrollView style={[styles.container, { backgroundColor: theme.bg }]} contentContainerStyle={styles.contentContainer}>
       <View style={styles.inner}>
         {/* 헤더 */}
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>📌 위시리스트</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            가고 싶은 장소를 모아보세요 · {filtered.length}개
-          </Text>
+        <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+          <View>
+            <Text style={[styles.title, { color: theme.text }]}>📌 위시리스트</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              가고 싶은 장소를 모아보세요 · {filtered.length}개
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={() => setViewMode('list')} style={[styles.viewToggleBtn, viewMode === 'list' && { backgroundColor: colors.primary[500], borderColor: colors.primary[500] }]}>
+              <Text style={[styles.viewToggleText, { color: viewMode === 'list' ? '#fff' : theme.textSecondary }]}>리스트 보기</Text>
+            </Pressable>
+            <Pressable onPress={() => setViewMode('map')} style={[styles.viewToggleBtn, viewMode === 'map' && { backgroundColor: colors.primary[500], borderColor: colors.primary[500] }]}>
+              <Text style={[styles.viewToggleText, { color: viewMode === 'map' ? '#fff' : theme.textSecondary }]}>지도 보기</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* 카테고리 필터 */}
@@ -524,9 +594,34 @@ export default function WishlistWebScreen() {
           })}
         </ScrollView>
 
-        {/* 카드 그리드 */}
+        {/* 카드 그리드 or 지도 */}
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary[500]} style={{ marginTop: 60 }} />
+        ) : viewMode === 'map' ? (
+          <View style={{ height: 600, width: '100%', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: theme.border }}>
+            {isLoaded ? (
+              <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '100%' }}
+                center={
+                  filtered.length > 0 && filtered[0].latitude && filtered[0].longitude
+                    ? { lat: filtered[0].latitude, lng: filtered[0].longitude }
+                    : { lat: 37.5665, lng: 126.9780 }
+                }
+                zoom={12}
+              >
+                {filtered.map((item: any) => (
+                  item.latitude && item.longitude && (
+                    <Marker
+                      key={item.id}
+                      position={{ lat: item.latitude, lng: item.longitude }}
+                      onClick={() => openDetail(item)}
+                      title={item.name}
+                    />
+                  )
+                ))}
+              </GoogleMap>
+            ) : <ActivityIndicator size="large" color={colors.primary[500]} style={{ marginTop: 60 }} />}
+          </View>
         ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={{ fontSize: 48, marginBottom: 16 }}>📍</Text>
@@ -630,11 +725,29 @@ export default function WishlistWebScreen() {
                 </Pressable>
               ))}
             </View>
-            <TextInput
-              style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: theme.text, borderColor: theme.border }]}
-              placeholder="주소 (선택)" placeholderTextColor={theme.textTertiary}
-              value={formAddress} onChangeText={setFormAddress}
-            />
+            {isLoaded ? (
+              <Autocomplete
+                onLoad={(autocomplete) => (autocompleteRef.current = autocomplete)}
+                onPlaceChanged={handlePlaceChanged}
+              >
+                <input
+                  type="text"
+                  placeholder="주소 검색 (구글 맵)"
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: '12px', boxSizing: 'border-box',
+                    border: `1px solid ${theme.border}`, fontSize: '15px', outline: 'none',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                    color: theme.text, marginBottom: '16px'
+                  }}
+                />
+              </Autocomplete>
+            ) : (
+              <TextInput
+                style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: theme.text, borderColor: theme.border }]}
+                placeholder="주소 (선택)" placeholderTextColor={theme.textTertiary}
+                value={formAddress} onChangeText={setFormAddress}
+              />
+            )}
             {formError ? <Text style={styles.errorText}>⚠️ {formError}</Text> : null}
             <View style={styles.modalActions}>
               <Pressable onPress={() => setShowModal(false)} style={[styles.cancelBtn, { cursor: 'pointer' } as any]}>
@@ -672,6 +785,8 @@ const styles = StyleSheet.create({
   header: { marginBottom: 24 },
   title: { fontSize: 28, fontWeight: '700' },
   subtitle: { fontSize: 14, marginTop: 4 },
+  viewToggleBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'transparent', cursor: 'pointer' },
+  viewToggleText: { fontSize: 14, fontWeight: '600' },
   filterBar: { marginBottom: 24 },
   filterContent: { gap: 8, paddingBottom: 4 },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },

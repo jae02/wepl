@@ -59,6 +59,25 @@ export class WishlistController {
   }
 
   /**
+   * GET /api/v1/trips/:tripId/wishlist/recommend
+   * 위치 기반 추천 장소
+   */
+  @Get('recommend')
+  async recommend(
+    @Param('tripId') tripId: string,
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('radius') radius: string,
+  ) {
+    return this.wishlistService.recommendPlaces(
+      tripId,
+      parseFloat(lat),
+      parseFloat(lng),
+      radius ? parseFloat(radius) : 5000,
+    );
+  }
+
+  /**
    * GET /api/v1/trips/:tripId/wishlist/:wishlistId
    * 위시리스트 장소 상세 조회 (댓글 포함)
    */

@@ -14,6 +14,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { ExpenseCategory, TripRole } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import { SyncGateway } from '../sync/sync.gateway';
 
 /** 경비 조회 시 포함할 사용자 정보 select 옵션 */
 const USER_SELECT = {
@@ -24,7 +25,10 @@ const USER_SELECT = {
 
 @Injectable()
 export class ExpenseService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly syncGateway: SyncGateway,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // 경비 생성 (정산 분배 포함)
@@ -118,6 +122,8 @@ export class ExpenseService {
       });
     });
 
+    this.syncGateway.server.to(`trip_${tripId}`).emit('expenseUpdated');
+
     return expense;
   }
 
@@ -181,7 +187,7 @@ export class ExpenseService {
 
     const updateData = dto as any;
 
-    return this.prisma.expense.update({
+    const updated = await this.prisma.expense.update({
       where: { id },
       data: {
         ...(updateData.description !== undefined && {
@@ -216,6 +222,10 @@ export class ExpenseService {
         },
       },
     });
+
+    this.syncGateway.server.to(`trip_${expense.tripId}`).emit('expenseUpdated');
+
+    return updated;
   }
 
   // ---------------------------------------------------------------------------
@@ -255,6 +265,8 @@ export class ExpenseService {
       });
     });
 
+    this.syncGateway.server.to(`trip_${expense.tripId}`).emit('expenseUpdated');
+
     return { message: '경비가 삭제되었습니다.' };
   }
 
@@ -270,16 +282,20 @@ export class ExpenseService {
       throw new NotFoundException('정산 분배 내역을 찾을 수 없습니다.');
     }
 
-    return this.prisma.expenseSplit.update({
+    const updated = await this.prisma.expenseSplit.update({
       where: { id: splitId },
       data: { isPaid: !split.isPaid },
       include: {
         user: { select: USER_SELECT },
         expense: {
-          select: { id: true, description: true },
+          select: { id: true, description: true, tripId: true },
         },
       },
     });
+
+    this.syncGateway.server.to(`trip_${updated.expense.tripId}`).emit('expenseUpdated');
+
+    return updated;
   }
 
   // ---------------------------------------------------------------------------

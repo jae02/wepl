@@ -13,12 +13,16 @@ import { CreateWishlistDto } from './dto/create-wishlist.dto';
 import { UpdateWishlistDto } from './dto/update-wishlist.dto';
 import { WishlistQueryDto } from './dto/wishlist-query.dto';
 import { Prisma } from '@prisma/client';
+import { SyncGateway } from '../sync/sync.gateway';
 
 @Injectable()
 export class WishlistService {
   private readonly logger = new Logger(WishlistService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly syncGateway: SyncGateway,
+  ) {}
 
   /**
    * 위시리스트 장소 생성
@@ -55,6 +59,8 @@ export class WishlistService {
     this.logger.log(
       `위시리스트 장소 생성: ${place.id} (여행: ${tripId}, 작성자: ${userId})`,
     );
+
+    this.syncGateway.server.to(`trip_${tripId}`).emit('wishlistUpdated');
 
     return place;
   }
@@ -143,7 +149,7 @@ export class WishlistService {
       throw new NotFoundException('위시리스트 장소를 찾을 수 없습니다.');
     }
 
-    return this.prisma.wishlistPlace.update({
+    const updated = await this.prisma.wishlistPlace.update({
       where: { id },
       data: { ...dto },
       include: {
@@ -156,6 +162,10 @@ export class WishlistService {
         },
       },
     });
+
+    this.syncGateway.server.to(`trip_${existing.tripId}`).emit('wishlistUpdated');
+
+    return updated;
   }
 
   /**
@@ -177,6 +187,32 @@ export class WishlistService {
 
     this.logger.log(`위시리스트 장소 삭제: ${id}`);
 
+    this.syncGateway.server.to(`trip_${existing.tripId}`).emit('wishlistUpdated');
+
     return { deleted: true };
+  }
+
+  /**
+   * 위치 기반 추천 장소 (Haversine formula)
+   */
+  async recommendPlaces(tripId: string, lat: number, lng: number, radiusMeters: number) {
+    const places = await this.prisma.$queryRaw`
+      SELECT * FROM (
+        SELECT id, name, address, latitude, longitude, category, "imageUrl",
+          (6371000 * acos(
+            cos(radians(${lat})) * cos(radians(latitude)) * 
+            cos(radians(longitude) - radians(${lng})) + 
+            sin(radians(${lat})) * sin(radians(latitude))
+          )) AS distance
+        FROM "WishlistPlace"
+        WHERE "tripId" = ${tripId}
+          AND latitude IS NOT NULL
+          AND longitude IS NOT NULL
+      ) AS sub
+      WHERE distance <= ${radiusMeters}
+      ORDER BY distance ASC
+      LIMIT 10
+    `;
+    return places;
   }
 }

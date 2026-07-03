@@ -11,6 +11,7 @@ import { ScheduleModule } from './schedule/schedule.module';
 import { ChecklistModule } from './checklist/checklist.module';
 import { DiaryModule } from './diary/diary.module';
 import { ExpenseModule } from './expense/expense.module';
+import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ExpenseModule } from './expense/expense.module';
     ChecklistModule,
     DiaryModule,
     ExpenseModule,
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],
