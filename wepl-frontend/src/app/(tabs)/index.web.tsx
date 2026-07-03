@@ -211,7 +211,7 @@ export default function WebHomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: dc.bg }]}>
-      {/* ─── 메인 영역 (좌) ─── */}
+      {/* main area */}
       <ScrollView
         style={styles.mainArea}
         contentContainerStyle={styles.mainContent}
@@ -406,8 +406,7 @@ export default function WebHomeScreen() {
           )}
         </View>
       </ScrollView>
-
-      {/* ─── 사이드 패널 (우) ─── */}
+      {/* side panel */}
       <ScrollView
         style={[
           styles.sidePanel,

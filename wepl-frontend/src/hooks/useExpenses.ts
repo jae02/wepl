@@ -163,6 +163,22 @@ export function useToggleSplitPaid(tripId: string) {
   });
 }
 
+/**
+ * 지출 항목 삭제
+ */
+export function useDeleteExpense(tripId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (expenseId: string) =>
+      api.delete(`/api/v1/trips/${tripId}/expenses/${expenseId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...expenseKeys.all, 'list', tripId] });
+      queryClient.invalidateQueries({ queryKey: expenseKeys.summary(tripId) });
+      queryClient.invalidateQueries({ queryKey: expenseKeys.stats(tripId) });
+    },
+  });
+}
+
 // 화면에서 사용하는 alias
 export const useAddExpense = useCreateExpense;
 

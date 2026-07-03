@@ -104,3 +104,18 @@ export function useUpdateScheduleStatus(tripId: string) {
     },
   });
 }
+
+/**
+ * 일정 수정 (시간, 메모 등 일반 필드)
+ */
+export function useUpdateSchedule(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ scheduleId, data }: { scheduleId: string; data: any }) =>
+      api.patch(`/api/v1/trips/${tripId}/schedules/${scheduleId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+}
