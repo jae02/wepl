@@ -1,9 +1,8 @@
 /**
- * 웹 전용 타임라인 — 엑셀 스타일 시간별 타임테이블
- * 좌측 날짜 패널 + 우측 시간별 그리드 + 위시리스트 빠른 추가
+ * 웹 전용 타임라인 — 시간 자유 설정 (크로놀로지) + 상단 가로 날짜 패널
  */
 
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -34,9 +33,6 @@ import { useJsApiLoader, GoogleMap, Marker, Polyline } from '@react-google-maps/
 const LIBRARIES: any = ['places'];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const HOURS = Array.from({ length: 24 }, (_, i) => i); // 0~23
-const DISPLAY_HOURS = HOURS.filter(h => h >= 6 && h <= 23); // 06:00~23:00 기본 표시
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   PLANNED: { label: '예정', color: '#3B82F6', bg: '#3B82F620', icon: '📋' },
@@ -101,25 +97,6 @@ function getDayNumber(dateStr: string, startDateStr: string): number {
   } catch {
     return 0;
   }
-}
-
-function parseHour(timeStr: string | null): number | null {
-  if (!timeStr) return null;
-  const parts = timeStr.split(':');
-  return parts.length >= 1 ? parseInt(parts[0], 10) : null;
-}
-
-function formatHour(h: number): string {
-  return `${String(h).padStart(2, '0')}:00`;
-}
-
-function getScheduleSpan(item: any): { startHour: number; endHour: number } {
-  const sh = parseHour(item.startTime);
-  const eh = parseHour(item.endTime);
-  return {
-    startHour: sh ?? 9,
-    endHour: eh ?? ((sh ?? 9) + 1),
-  };
 }
 
 // ─── Checklist Panel ──────────────────────────────────────────────────────────
@@ -211,14 +188,12 @@ function ChecklistPanel({
 function WishlistDropdown({
   tripId,
   date,
-  hour,
   isDark,
   theme,
   onClose,
 }: {
   tripId: string;
   date: string;
-  hour: number;
   isDark: boolean;
   theme: ReturnType<typeof getThemeColors>;
   onClose: () => void;
@@ -257,7 +232,7 @@ function WishlistDropdown({
           {/* Header */}
           <View style={dropStyles.header}>
             <Text style={[dropStyles.headerTitle, { color: theme.text }]}>
-              📅 {formatDateKR(date)} {formatHour(hour)} 일정 추가
+              📅 {formatDateKR(date)} 일정 추가
             </Text>
             <Pressable onPress={onClose} style={{ cursor: 'pointer' } as any}>
               <Text style={{ fontSize: 20, color: theme.textSecondary }}>✕</Text>
@@ -548,123 +523,137 @@ function ScheduleDetailModal({
   );
 }
 
-// ─── Timetable Row (한 시간 슬롯) ──────────────────────────────────────────
+// ─── Schedule Item Component (Vertical Timeline) ─────────────────────────────
 
-function TimeSlotRow({
-  hour,
-  scheduleItems,
+function ScheduleItemCard({
+  item,
+  index,
+  isLast,
   tripId,
-  date,
   isDark,
   theme,
+  schedules,
   onOpenDetail,
-  onOpenAdd,
 }: {
-  hour: number;
-  scheduleItems: any[];
+  item: any;
+  index: number;
+  isLast: boolean;
   tripId: string;
-  date: string;
   isDark: boolean;
   theme: ReturnType<typeof getThemeColors>;
+  schedules: any[];
   onOpenDetail: (item: any) => void;
-  onOpenAdd: (hour: number) => void;
 }) {
-  const isCurrentHour = (() => {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    return date === today && now.getHours() === hour;
-  })();
+  const swapSchedule = useSwapSchedule(tripId);
+  const status = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.PLANNED;
+  const title = item.wishlistPlace?.name ?? item.customTitle ?? '제목 없음';
+  const category = item.wishlistPlace?.category ?? 'OTHER';
 
   return (
-    <View style={{
-      flexDirection: 'row',
-      minHeight: 60,
-      borderBottomWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-      backgroundColor: isCurrentHour
-        ? (isDark ? 'rgba(102,126,234,0.08)' : 'rgba(102,126,234,0.04)')
-        : 'transparent',
-    }}>
-      {/* 시간 라벨 */}
-      <View style={{
-        width: 70, paddingVertical: 10, paddingHorizontal: 12,
-        borderRightWidth: 1,
-        borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-        alignItems: 'flex-end', justifyContent: 'flex-start',
-      }}>
-        <Text style={{
-          fontSize: 13, fontWeight: '700',
-          color: isCurrentHour ? colors.primary[500] : theme.textSecondary,
-          fontVariant: ['tabular-nums'],
-        }}>
-          {formatHour(hour)}
-        </Text>
+    <View style={{ flexDirection: 'row', marginBottom: 0 }}>
+      {/* Timeline line & dot */}
+      <View style={{ width: 40, alignItems: 'center' }}>
+        <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: status.color, marginTop: 24, zIndex: 1 }} />
+        {!isLast && (
+          <View style={{ width: 2, flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', marginTop: 4 }} />
+        )}
       </View>
 
-      {/* 일정 슬롯 영역 */}
-      <Pressable
-        onPress={() => {
-          if (scheduleItems.length === 0) {
-            onOpenAdd(hour);
-          }
-        }}
-        style={({ hovered }: any) => [{
-          flex: 1, paddingVertical: 6, paddingHorizontal: 10,
-          minHeight: 60,
-          cursor: scheduleItems.length === 0 ? 'pointer' : 'default',
-        },
-        hovered && scheduleItems.length === 0 && {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)',
-        }] as any}
-      >
-        {scheduleItems.length === 0 ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', opacity: 0.3 }}>
-            <Text style={{ fontSize: 18, color: theme.textTertiary }}>+</Text>
-          </View>
-        ) : (
-          <View style={{ gap: 6 }}>
-            {scheduleItems.map((item: any) => {
-              const status = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.PLANNED;
-              const title = item.wishlistPlace?.name ?? item.customTitle ?? '제목 없음';
-              const category = item.wishlistPlace?.category ?? 'OTHER';
-
-              return (
+      {/* Card Body */}
+      <View style={{ flex: 1, paddingBottom: 16 }}>
+        <Pressable
+          onPress={() => onOpenDetail(item)}
+          style={({ hovered }: any) => [{
+            backgroundColor: theme.card,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 16,
+            padding: 16,
+            cursor: 'pointer',
+          }, hovered && {
+            borderColor: colors.primary[500] + '50',
+            transform: [{ scale: 1.005 }],
+            ...Platform.select({
+              web: { boxShadow: '0 8px 24px rgba(0,0,0,0.06)' },
+            }) as any,
+          }] as any}
+        >
+          {/* Header */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {item.startTime ? (
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.primary[500] }}>
+                  {item.startTime} {item.endTime ? `~ ${item.endTime}` : ''}
+                </Text>
+              ) : (
+                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textTertiary }}>
+                  시간 미지정 (클릭하여 설정)
+                </Text>
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 4 }}>
                 <Pressable
-                  key={item.id}
-                  onPress={() => onOpenDetail(item)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (index > 0) {
+                      swapSchedule.mutate({ scheduleId: item.id, targetScheduleId: schedules[index - 1].id });
+                    }
+                  }}
+                  disabled={index === 0}
                   style={({ hovered }: any) => [{
-                    flexDirection: 'row', alignItems: 'center', gap: 10,
-                    paddingVertical: 10, paddingHorizontal: 14,
-                    borderRadius: 10, borderLeftWidth: 4,
-                    borderLeftColor: status.color,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.025)',
-                    cursor: 'pointer',
-                  },
-                  hovered && {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                    transform: [{ scale: 1.005 }],
-                  }] as any}
+                    padding: 4, borderRadius: 6, cursor: index === 0 ? 'not-allowed' : 'pointer',
+                  }, hovered && index > 0 && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }] as any}
                 >
-                  <Text style={{ fontSize: 18 }}>{CATEGORY_ICONS[category] ?? '📌'}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.text }} numberOfLines={1}>
-                      {title}
-                    </Text>
-                    {item.startTime && (
-                      <Text style={{ fontSize: 12, color: theme.textTertiary, marginTop: 2 }}>
-                        {item.startTime}{item.endTime ? ` ~ ${item.endTime}` : ''}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: status.bg }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: status.color }}>{status.label}</Text>
-                  </View>
+                  <Text style={{ fontSize: 12, color: index === 0 ? theme.textTertiary : theme.textSecondary }}>▲ 위로</Text>
                 </Pressable>
-              );
-            })}
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    if (!isLast) {
+                      swapSchedule.mutate({ scheduleId: item.id, targetScheduleId: schedules[index + 1].id });
+                    }
+                  }}
+                  disabled={isLast}
+                  style={({ hovered }: any) => [{
+                    padding: 4, borderRadius: 6, cursor: isLast ? 'not-allowed' : 'pointer',
+                  }, hovered && !isLast && { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }] as any}
+                >
+                  <Text style={{ fontSize: 12, color: isLast ? theme.textTertiary : theme.textSecondary }}>▼ 아래로</Text>
+                </Pressable>
+              </View>
+              <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: status.bg }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: status.color }}>{status.label}</Text>
+              </View>
+            </View>
           </View>
-        )}
-      </Pressable>
+
+          {/* Title and Address */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+            <Text style={{ fontSize: 20 }}>{CATEGORY_ICONS[category] ?? '📌'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 2 }} numberOfLines={1}>{title}</Text>
+              {item.wishlistPlace?.address && (
+                <Text style={{ fontSize: 13, color: theme.textSecondary }} numberOfLines={1}>📍 {item.wishlistPlace.address}</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Memo & Meta */}
+          {(item.memo || item._count?.checklistItems > 0) && (
+            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Text style={{ flex: 1, fontSize: 13, color: theme.textSecondary, fontStyle: 'italic' }} numberOfLines={2}>
+                {item.memo ? `📝 ${item.memo}` : ''}
+              </Text>
+              {item._count?.checklistItems > 0 && (
+                <Text style={{ fontSize: 12, fontWeight: '600', color: theme.textTertiary, marginLeft: 16 }}>
+                  📋 체크리스트 {item._count.checklistItems}개
+                </Text>
+              )}
+            </View>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -701,25 +690,12 @@ export default function TimelineWebScreen() {
     }
   }, [displayDates, selectedDate]);
 
-  const [viewMode, setViewMode] = useState<'timetable' | 'map'>('timetable');
+  const [viewMode, setViewMode] = useState<'timeline' | 'map'>('timeline');
   const { data: schedules, isLoading } = useSchedules(tripId ?? '', selectedDate);
 
   // Modal states
-  const [addDropdown, setAddDropdown] = useState<{ hour: number } | null>(null);
+  const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<any>(null);
-
-  // Group schedules by hour
-  const schedulesByHour = useMemo(() => {
-    const map: Record<number, any[]> = {};
-    DISPLAY_HOURS.forEach(h => { map[h] = []; });
-    (schedules ?? []).forEach((item: any) => {
-      const { startHour } = getScheduleSpan(item);
-      const h = Math.max(6, Math.min(23, startHour));
-      if (!map[h]) map[h] = [];
-      map[h].push(item);
-    });
-    return map;
-  }, [schedules]);
 
   // Summary stats
   const totalCount = (schedules ?? []).length;
@@ -739,97 +715,78 @@ export default function TimelineWebScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={{ maxWidth: 1100, width: '100%', alignSelf: 'center', paddingHorizontal: 24, paddingTop: 24, flex: 1 }}>
-        {/* 헤더 */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <View>
-            <Text style={{ fontSize: 26, fontWeight: '800', color: theme.text }}>📅 타임라인</Text>
-            <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>
-              시간대별로 여행 일정을 세세하게 관리하세요
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              onPress={() => setViewMode('timetable')}
-              style={[{
-                paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-                borderWidth: 1, borderColor: 'transparent', cursor: 'pointer',
-              }, viewMode === 'timetable' && {
-                backgroundColor: colors.primary[500], borderColor: colors.primary[500],
-              }] as any}
-            >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: viewMode === 'timetable' ? '#fff' : theme.textSecondary }}>
-                시간표
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
+        <View style={{ maxWidth: 1100, width: '100%', alignSelf: 'center', paddingHorizontal: 24, paddingTop: 24 }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <View>
+              <Text style={{ fontSize: 26, fontWeight: '800', color: theme.text }}>📅 타임라인</Text>
+              <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>
+                여행 일정을 시간순으로 확인하고 수정하세요
               </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setViewMode('map')}
-              style={[{
-                paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-                borderWidth: 1, borderColor: 'transparent', cursor: 'pointer',
-              }, viewMode === 'map' && {
-                backgroundColor: colors.primary[500], borderColor: colors.primary[500],
-              }] as any}
-            >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: viewMode === 'map' ? '#fff' : theme.textSecondary }}>
-                지도 보기
-              </Text>
-            </Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                onPress={() => setViewMode('timeline')}
+                style={[{
+                  paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                  borderWidth: 1, borderColor: 'transparent', cursor: 'pointer',
+                }, viewMode === 'timeline' && {
+                  backgroundColor: colors.primary[500], borderColor: colors.primary[500],
+                }] as any}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: viewMode === 'timeline' ? '#fff' : theme.textSecondary }}>
+                  타임라인
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setViewMode('map')}
+                style={[{
+                  paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                  borderWidth: 1, borderColor: 'transparent', cursor: 'pointer',
+                }, viewMode === 'map' && {
+                  backgroundColor: colors.primary[500], borderColor: colors.primary[500],
+                }] as any}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: viewMode === 'map' ? '#fff' : theme.textSecondary }}>
+                  지도 보기
+                </Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
 
-        <View style={{ flexDirection: 'row', flex: 1, gap: 20 }}>
-          {/* 좌측 날짜 패널 */}
-          <ScrollView
-            style={{
-              width: 200, borderRadius: 16, borderWidth: 1, padding: 14,
-              backgroundColor: theme.card, borderColor: theme.border,
-              maxHeight: '100%',
-            }}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textSecondary, marginBottom: 10, letterSpacing: 0.5 }}>
-              📆 날짜 선택
-            </Text>
-            {datesLoading ? (
-              <ActivityIndicator color={colors.primary[500]} style={{ marginTop: 16 }} />
-            ) : null}
-            {displayDates.map((date: string, idx: number) => {
-              const isActive = selectedDate === date;
-              const dayNum = trip?.startDate ? getDayNumber(date, trip.startDate) : idx + 1;
-              return (
-                <Pressable
-                  key={date}
-                  onPress={() => setSelectedDate(date)}
-                  style={({ hovered }: any) => [{
-                    paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, marginBottom: 3,
-                    cursor: 'pointer',
-                  },
-                  isActive && { backgroundColor: colors.primary[500] + '18' },
-                  hovered && !isActive && {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                  }] as any}
-                >
-                  <Text style={{
-                    fontSize: 11, fontWeight: '700',
-                    color: isActive ? colors.primary[500] : theme.textTertiary,
-                    marginBottom: 2,
-                  }}>
-                    DAY {dayNum}
-                  </Text>
-                  <Text style={{
-                    fontSize: 14,
-                    fontWeight: isActive ? '700' : '500',
-                    color: isActive ? colors.primary[500] : theme.text,
-                  }}>
-                    {formatDateKR(date)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          {/* 상단 날짜 패널 (가로 스크롤) */}
+          <View style={{ marginBottom: 24, borderBottomWidth: 1, borderColor: theme.border, paddingBottom: 16 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 4 }}>
+              {datesLoading && <ActivityIndicator color={colors.primary[500]} style={{ marginRight: 16 }} />}
+              {displayDates.map((date: string, idx: number) => {
+                const isActive = selectedDate === date;
+                const dayNum = trip?.startDate ? getDayNumber(date, trip.startDate) : idx + 1;
+                return (
+                  <Pressable
+                    key={date}
+                    onPress={() => setSelectedDate(date)}
+                    style={({ hovered }: any) => [{
+                      paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12,
+                      borderWidth: 1, borderColor: isActive ? colors.primary[500] : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'),
+                      backgroundColor: isActive ? colors.primary[500] + '15' : theme.card,
+                      cursor: 'pointer',
+                      alignItems: 'center',
+                    }, hovered && !isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.02)' }] as any}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: isActive ? colors.primary[500] : theme.textTertiary, marginBottom: 4 }}>
+                      DAY {dayNum}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: isActive ? '700' : '600', color: isActive ? colors.primary[500] : theme.text }}>
+                      {formatDateKR(date)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
 
-          {/* 우측 메인 영역 */}
+          {/* 메인 콘텐츠 영역 */}
           {viewMode === 'map' ? (
             <View style={{ flex: 1, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: theme.border, minHeight: 600 }}>
               {isLoaded ? (
@@ -856,96 +813,78 @@ export default function TimelineWebScreen() {
               )}
             </View>
           ) : selectedDate ? (
-            <View style={{ flex: 1 }}>
-              {/* 날짜 헤더 + 요약 */}
-              <View style={{
-                flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-                marginBottom: 12, paddingHorizontal: 4,
-              }}>
-                <View>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: theme.text }}>
-                    {formatDateFull(selectedDate)}
-                  </Text>
-                  {trip?.startDate && (
-                    <Text style={{ fontSize: 12, color: colors.primary[500], fontWeight: '600', marginTop: 2 }}>
-                      DAY {getDayNumber(selectedDate, trip.startDate)}
-                    </Text>
-                  )}
+            <View style={{ maxWidth: 800, alignSelf: 'center', width: '100%' }}>
+              {/* 요약 뱃지 */}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20, gap: 12 }}>
+                <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSecondary }}>📋 {totalCount}개 일정</Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                  <View style={{
-                    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                  }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSecondary }}>
-                      📋 {totalCount}개 일정
-                    </Text>
+                {totalCount > 0 && (
+                  <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#10B98115' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#10B981' }}>✅ {completedCount}/{totalCount} 완료</Text>
                   </View>
-                  {totalCount > 0 && (
-                    <View style={{
-                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-                      backgroundColor: '#10B98115',
-                    }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#10B981' }}>
-                        ✅ {completedCount}/{totalCount} 완료
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                )}
               </View>
 
-              {/* 시간표 그리드 */}
-              <ScrollView
-                style={{
-                  flex: 1, borderRadius: 16, borderWidth: 1,
-                  borderColor: theme.border,
-                  backgroundColor: theme.card,
-                  overflow: 'hidden',
-                }}
-                showsVerticalScrollIndicator={false}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size="large" color={colors.primary[500]} style={{ marginTop: 60, marginBottom: 60 }} />
-                ) : (
-                  DISPLAY_HOURS.map((hour) => (
-                    <TimeSlotRow
-                      key={hour}
-                      hour={hour}
-                      scheduleItems={schedulesByHour[hour] ?? []}
+              {/* 일정 목록 */}
+              {isLoading ? (
+                <ActivityIndicator size="large" color={colors.primary[500]} style={{ marginVertical: 60 }} />
+              ) : (schedules ?? []).length === 0 ? (
+                <View style={{ paddingVertical: 60, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 40, marginBottom: 16 }}>✈️</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: theme.textSecondary }}>등록된 일정이 없습니다</Text>
+                  <Text style={{ fontSize: 14, color: theme.textTertiary, marginTop: 8 }}>아래 버튼을 눌러 일정을 추가해보세요!</Text>
+                </View>
+              ) : (
+                <View style={{ paddingLeft: 8 }}>
+                  {(schedules ?? []).map((item: any, index: number) => (
+                    <ScheduleItemCard
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      schedules={schedules}
+                      isLast={index === (schedules ?? []).length - 1}
                       tripId={tripId ?? ''}
-                      date={selectedDate}
                       isDark={isDark}
                       theme={theme}
-                      onOpenDetail={(item) => setDetailItem(item)}
-                      onOpenAdd={(h) => setAddDropdown({ hour: h })}
+                      onOpenDetail={(i) => setDetailItem(i)}
                     />
-                  ))
-                )}
-              </ScrollView>
+                  ))}
+                </View>
+              )}
+
+              {/* 추가 버튼 */}
+              <Pressable
+                onPress={() => setIsAddDropdownOpen(true)}
+                style={({ hovered }: any) => [{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  paddingVertical: 16, borderRadius: 16, marginTop: 16,
+                  borderWidth: 2, borderStyle: 'dashed', borderColor: colors.primary[500] + '80',
+                  backgroundColor: hovered ? (colors.primary[500] + '10') : 'transparent',
+                  cursor: 'pointer',
+                }] as any}
+              >
+                <Text style={{ fontSize: 18, color: colors.primary[500], fontWeight: '700' }}>+</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.primary[500] }}>새 일정 추가</Text>
+              </Pressable>
             </View>
           ) : (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 100 }}>
               <Text style={{ fontSize: 48, marginBottom: 16 }}>📅</Text>
-              <Text style={{ fontSize: 18, fontWeight: '600', color: theme.textSecondary }}>
-                날짜를 선택하세요
-              </Text>
-              <Text style={{ fontSize: 14, color: theme.textTertiary, marginTop: 8 }}>
-                좌측 패널에서 날짜를 선택하면 시간별 일정이 표시됩니다
-              </Text>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: theme.textSecondary }}>날짜를 선택하세요</Text>
             </View>
           )}
         </View>
-      </View>
+      </ScrollView>
 
       {/* Modals */}
-      {addDropdown && selectedDate && (
+      {isAddDropdownOpen && selectedDate && (
         <WishlistDropdown
           tripId={tripId ?? ''}
           date={selectedDate}
-          hour={addDropdown.hour}
           isDark={isDark}
           theme={theme}
-          onClose={() => setAddDropdown(null)}
+          onClose={() => setIsAddDropdownOpen(false)}
         />
       )}
       {detailItem && (
