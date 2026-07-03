@@ -17,7 +17,7 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
-import { useSchedules, useScheduleDates, useUpdateSchedule, useSwapSchedule, useCreateSchedule } from '@/hooks/useSchedules';
+import { useSchedules, useScheduleDates, useUpdateSchedule, useSwapSchedule, useCreateSchedule, useDeleteSchedule } from '@/hooks/useSchedules';
 import { useTrip } from '@/hooks/useTrips';
 import { useWishlist } from '@/hooks/useWishlist';
 import type { WishlistItem } from '@/hooks/useWishlist';
@@ -411,6 +411,7 @@ function ScheduleDetailModal({
   onClose: () => void;
 }) {
   const updateSchedule = useUpdateSchedule(tripId);
+  const deleteSchedule = useDeleteSchedule(tripId);
   const [startTime, setStartTime] = useState(item.startTime ?? '');
   const [endTime, setEndTime] = useState(item.endTime ?? '');
   const [memo, setMemo] = useState(item.memo ?? '');
@@ -432,6 +433,14 @@ function ScheduleDetailModal({
     }, {
       onSuccess: () => onClose(),
     });
+  };
+
+  const handleDelete = () => {
+    if (window.confirm('정말 이 일정을 삭제하시겠습니까?')) {
+      deleteSchedule.mutate(item.id, {
+        onSuccess: () => onClose(),
+      });
+    }
   };
 
   return (
@@ -539,20 +548,32 @@ function ScheduleDetailModal({
 
           {/* Footer */}
           <View style={{
-            flexDirection: 'row', justifyContent: 'flex-end', gap: 10,
+            flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
             padding: 16, borderTopWidth: 1,
             borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
           }}>
             <Pressable
-              onPress={onClose}
+              onPress={handleDelete}
               style={({ hovered }: any) => [{
-                paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
+                backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)',
                 cursor: 'pointer',
               }, hovered && { opacity: 0.8 }] as any}
             >
-              <Text style={{ color: theme.textSecondary, fontWeight: '600', fontSize: 14 }}>취소</Text>
+              <Text style={{ color: '#EF4444', fontWeight: '600', fontSize: 13 }}>삭제</Text>
             </Pressable>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={onClose}
+                style={({ hovered }: any) => [{
+                  paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                  cursor: 'pointer',
+                }, hovered && { opacity: 0.8 }] as any}
+              >
+                <Text style={{ color: theme.textSecondary, fontWeight: '600', fontSize: 14 }}>취소</Text>
+              </Pressable>
             <Pressable
               onPress={handleSave}
               style={({ hovered }: any) => [{
@@ -562,6 +583,7 @@ function ScheduleDetailModal({
             >
               <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>저장</Text>
             </Pressable>
+            </View>
           </View>
         </Pressable>
       </Pressable>

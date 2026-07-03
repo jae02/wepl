@@ -146,3 +146,18 @@ export function useSwapSchedule(tripId: string) {
     },
   });
 }
+
+/**
+ * 일정 삭제
+ */
+export function useDeleteSchedule(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (scheduleId: string) =>
+      api.delete(`/api/v1/trips/${tripId}/schedules/${scheduleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+}
