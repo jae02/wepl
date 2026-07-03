@@ -49,6 +49,18 @@ export const scheduleKeys = {
 
 // ─── 훅 ─────────────────────────────────────────────────────────────────────────
 
+export function useCreateSchedule(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { date: string; wishlistPlaceId?: string; customTitle?: string }) =>
+      api.post(`/api/v1/trips/${tripId}/schedules`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+    },
+  });
+}
+
 /**
  * 특정 날짜의 일정 목록 조회
  * date가 없으면 비활성화

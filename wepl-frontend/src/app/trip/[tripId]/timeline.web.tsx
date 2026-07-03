@@ -16,7 +16,8 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
-import { useSchedules, useScheduleDates, useUpdateSchedule, useSwapSchedule } from '@/hooks/useSchedules';
+import { useSchedules, useScheduleDates, useUpdateSchedule, useSwapSchedule, useCreateSchedule } from '@/hooks/useSchedules';
+import { useTrip } from '@/hooks/useTrips';
 import {
   useChecklist,
   useCreateChecklistItem,
@@ -48,6 +49,25 @@ function formatDateKR(dateStr: string): string {
     return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' });
   } catch {
     return dateStr;
+  }
+}
+
+function getDatesInRange(start: string, end: string): string[] {
+  try {
+    const dates = [];
+    let current = new Date(start);
+    const endDate = new Date(end);
+    
+    // 무한루프 방지용 (최대 30일)
+    let count = 0;
+    while (current <= endDate && count < 30) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+      count++;
+    }
+    return dates;
+  } catch {
+    return [];
   }
 }
 
@@ -550,10 +570,28 @@ export default function TimelineWebScreen() {
   const isDark = scheme === 'dark';
   const theme = getThemeColors(scheme);
 
-  const { data: dates, isLoading: datesLoading } = useScheduleDates(tripId ?? '');
+  const { data: trip } = useTrip(tripId ?? '');
+  const { data: scheduleDates, isLoading: datesLoading } = useScheduleDates(tripId ?? '');
+  
+  const displayDates = useMemo(() => {
+    if (trip?.startDate && trip?.endDate) {
+      return getDatesInRange(trip.startDate, trip.endDate);
+    }
+    return scheduleDates ?? [];
+  }, [trip, scheduleDates]);
+
   const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
   const [viewMode, setViewMode] = useState<'timeline' | 'map'>('timeline');
   const { data: schedules, isLoading } = useSchedules(tripId ?? '', selectedDate);
+  const createSchedule = useCreateSchedule(tripId ?? '');
+
+  const handleCreateSchedule = () => {
+    if (!selectedDate) return;
+    createSchedule.mutate({
+      date: selectedDate,
+      customTitle: '새 일정 (클릭해서 수정)',
+    });
+  };
 
   const mapPath = useMemo(() => {
     return (schedules ?? [])
@@ -619,7 +657,7 @@ export default function TimelineWebScreen() {
             {datesLoading ? (
               <ActivityIndicator color={colors.primary[500]} style={{ marginTop: 16 }} />
             ) : null}
-            {(dates ?? []).map((date: string) => {
+            {(displayDates).map((date: string) => {
               const isActive = selectedDate === date;
               return (
                 <Pressable
@@ -692,8 +730,34 @@ export default function TimelineWebScreen() {
                 color={colors.primary[500]}
                 style={{ marginTop: 60 }}
               />
-            ) : (schedules ?? []).length === 0 ? (
-              <View style={styles.emptyState}>
+            ) : (
+              <>
+                {selectedDate && (
+                  <Pressable
+                    onPress={handleCreateSchedule}
+                    style={({ hovered }: any) => [
+                      {
+                        padding: 16,
+                        marginBottom: 16,
+                        borderRadius: 12,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                        borderStyle: 'dashed',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      },
+                      hovered && { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+                      { cursor: 'pointer' } as any,
+                    ]}
+                  >
+                    <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>
+                      + 새 자유 일정 추가하기
+                    </Text>
+                  </Pressable>
+                )}
+                {(schedules ?? []).length === 0 ? (
+                  <View style={styles.emptyState}>
                 <Text style={{ fontSize: 48, marginBottom: 16 }}>📋</Text>
                 <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                   일정이 없습니다
@@ -717,6 +781,8 @@ export default function TimelineWebScreen() {
                   theme={theme}
                 />
               ))
+            )}
+              </>
             )}
           </ScrollView>
           )}
