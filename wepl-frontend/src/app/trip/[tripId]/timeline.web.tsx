@@ -1,6 +1,6 @@
 /**
  * 웹 전용 타임라인 — 좌측 날짜 패널 + 우측 타임라인 카드
- * 카멜레온 카드: 인라인 편집, 체크리스트, 다이어리 지원
+ * 인라인 편집 + 체크리스트 지원
  */
 
 import { useState, useCallback, useRef, useMemo } from 'react';
@@ -24,12 +24,7 @@ import {
   useDeleteChecklistItem,
 } from '@/hooks/useChecklist';
 import type { ChecklistItem } from '@/hooks/useChecklist';
-import {
-  useDiary,
-  useCreateDiary,
-  useDeleteDiary,
-} from '@/hooks/useDiary';
-import type { DiaryEntry } from '@/hooks/useDiary';
+
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -40,9 +35,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   SKIPPED: { label: '건너뜀', color: '#6B7280', bg: '#6B728020' },
 };
 
-const MOOD_EMOJIS = ['😊', '😍', '🤩', '😌', '😢', '😤', '🥱', '😎'] as const;
 
-type TabKey = 'checklist' | 'diary';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,28 +48,7 @@ function formatDateKR(dateStr: string): string {
   }
 }
 
-function formatDiaryDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return dateStr;
-  }
-}
 
-function isDatePast(dateStr: string): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr);
-  target.setHours(0, 0, 0, 0);
-  return target < today;
-}
 
 // ─── Checklist Panel ──────────────────────────────────────────────────────────
 
@@ -246,147 +218,8 @@ function ChecklistPanel({
   );
 }
 
-// ─── Diary Panel ──────────────────────────────────────────────────────────────
+// ─── Diary Panel (보류 — 프로토타입 이후 구현 예정) ──────────────────────────
 
-function DiaryPanel({
-  tripId,
-  scheduleId,
-  isDark,
-  theme,
-}: {
-  tripId: string;
-  scheduleId: string;
-  isDark: boolean;
-  theme: ReturnType<typeof getThemeColors>;
-}) {
-  const { data: entries, isLoading } = useDiary(tripId, scheduleId);
-  const createDiary = useCreateDiary(tripId, scheduleId);
-  const deleteDiary = useDeleteDiary(tripId);
-  const [content, setContent] = useState('');
-  const [selectedMood, setSelectedMood] = useState<string>('😊');
-
-  const handleSubmit = useCallback(() => {
-    const trimmed = content.trim();
-    if (!trimmed) return;
-    createDiary.mutate({ content: trimmed, mood: selectedMood });
-    setContent('');
-    setSelectedMood('😊');
-  }, [content, selectedMood, createDiary]);
-
-  if (isLoading) {
-    return <ActivityIndicator color={colors.primary[500]} style={{ marginTop: 16 }} />;
-  }
-
-  const list: DiaryEntry[] = entries ?? [];
-
-  return (
-    <View style={styles.panelContent}>
-      {/* Write new entry */}
-      <View
-        style={[
-          styles.diaryForm,
-          {
-            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-          },
-        ]}
-      >
-        {/* Mood selector */}
-        <View style={styles.moodRow}>
-          <Text style={[styles.moodLabel, { color: theme.textSecondary }]}>기분:</Text>
-          {MOOD_EMOJIS.map((emoji) => (
-            <Pressable
-              key={emoji}
-              onPress={() => setSelectedMood(emoji)}
-              style={[
-                styles.moodBtn,
-                selectedMood === emoji && {
-                  backgroundColor: colors.primary[500] + '25',
-                  borderColor: colors.primary[500],
-                },
-                { cursor: 'pointer' } as any,
-              ]}
-            >
-              <Text style={styles.moodEmoji}>{emoji}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <TextInput
-          style={[
-            styles.diaryInput,
-            {
-              color: theme.text,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#ffffff',
-              borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-            },
-          ]}
-          placeholder="오늘의 여행 이야기를 적어보세요..."
-          placeholderTextColor={theme.textTertiary}
-          value={content}
-          onChangeText={setContent}
-          multiline
-          numberOfLines={3}
-        />
-        <Pressable
-          onPress={handleSubmit}
-          style={({ hovered }: any) => [
-            styles.diarySubmitBtn,
-            { backgroundColor: colors.primary[500] },
-            hovered && { opacity: 0.85 },
-            { cursor: 'pointer' } as any,
-          ]}
-        >
-          <Text style={styles.diarySubmitText}>✍️ 작성하기</Text>
-        </Pressable>
-      </View>
-
-      {/* Entries */}
-      {list.length === 0 ? (
-        <Text style={[styles.emptyPanelText, { color: theme.textTertiary }]}>
-          아직 다이어리 기록이 없습니다
-        </Text>
-      ) : (
-        list.map((entry) => (
-          <View
-            key={entry.id}
-            style={[
-              styles.diaryEntry,
-              {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-              },
-            ]}
-          >
-            <View style={styles.diaryEntryHeader}>
-              <View style={styles.diaryAuthorRow}>
-                {entry.mood && <Text style={styles.diaryMood}>{entry.mood}</Text>}
-                <Text style={[styles.diaryAuthor, { color: theme.text }]}>
-                  {entry.author?.nickname ?? '익명'}
-                </Text>
-              </View>
-              <View style={styles.diaryEntryActions}>
-                <Text style={[styles.diaryDate, { color: theme.textTertiary }]}>
-                  {formatDiaryDate(entry.createdAt)}
-                </Text>
-                <Pressable
-                  onPress={() => deleteDiary.mutate(entry.id)}
-                  style={({ hovered }: any) => [
-                    styles.deleteBtn,
-                    hovered && { backgroundColor: colors.error + '20' },
-                    { cursor: 'pointer' } as any,
-                  ]}
-                >
-                  <Text style={{ color: colors.error, fontSize: 13 }}>🗑</Text>
-                </Pressable>
-              </View>
-            </View>
-            <Text style={[styles.diaryContent, { color: theme.text }]}>{entry.content}</Text>
-          </View>
-        ))
-      )}
-    </View>
-  );
-}
 
 // ─── Schedule Card ────────────────────────────────────────────────────────────
 
@@ -407,8 +240,7 @@ function ScheduleCard({
 
   // ── Expand / Tab State ──
   const [expanded, setExpanded] = useState(false);
-  const defaultTab: TabKey = isDatePast(item.date) ? 'diary' : 'checklist';
-  const [activeTab, setActiveTab] = useState<TabKey>(defaultTab);
+  // 다이어리 보류 - 체크리스트만 표시
 
   // ── Inline editing state ──
   const [editingTime, setEditingTime] = useState(false);
@@ -618,15 +450,11 @@ function ScheduleCard({
                 ✅ 체크리스트 {item._count.checklistItems}
               </Text>
             )}
-            {item._count?.diaryEntries > 0 && (
-              <Text style={[styles.metaItem, { color: theme.textTertiary }]}>
-                📝 다이어리 {item._count.diaryEntries}
-              </Text>
-            )}
+
           </View>
         </Pressable>
 
-        {/* Expanded section: Checklist / Diary tabs */}
+        {/* Expanded section: Checklist */}
         {expanded && (
           <View
             style={[
@@ -637,89 +465,15 @@ function ScheduleCard({
               },
             ]}
           >
-            {/* Tabs */}
-            <View
-              style={[
-                styles.tabRow,
-                {
-                  borderBottomColor: isDark
-                    ? 'rgba(255,255,255,0.06)'
-                    : 'rgba(0,0,0,0.06)',
-                },
-              ]}
-            >
-              <Pressable
-                onPress={() => setActiveTab('checklist')}
-                style={({ hovered }: any) => [
-                  styles.tab,
-                  activeTab === 'checklist' && {
-                    borderBottomColor: colors.primary[500],
-                    borderBottomWidth: 2,
-                  },
-                  hovered && activeTab !== 'checklist' && { opacity: 0.7 },
-                  { cursor: 'pointer' } as any,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    {
-                      color:
-                        activeTab === 'checklist'
-                          ? colors.primary[500]
-                          : theme.textSecondary,
-                    },
-                    activeTab === 'checklist' && { fontWeight: '700' },
-                  ]}
-                >
-                  📋 체크리스트
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setActiveTab('diary')}
-                style={({ hovered }: any) => [
-                  styles.tab,
-                  activeTab === 'diary' && {
-                    borderBottomColor: colors.primary[500],
-                    borderBottomWidth: 2,
-                  },
-                  hovered && activeTab !== 'diary' && { opacity: 0.7 },
-                  { cursor: 'pointer' } as any,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    {
-                      color:
-                        activeTab === 'diary'
-                          ? colors.primary[500]
-                          : theme.textSecondary,
-                    },
-                    activeTab === 'diary' && { fontWeight: '700' },
-                  ]}
-                >
-                  📝 다이어리
-                </Text>
-              </Pressable>
+            <View style={styles.expandedHeader}>
+              <Text style={[styles.expandedTitle, { color: colors.primary[500] }]}>📋 체크리스트</Text>
             </View>
-
-            {/* Tab content */}
-            {activeTab === 'checklist' ? (
-              <ChecklistPanel
-                tripId={tripId}
-                scheduleId={item.id}
-                isDark={isDark}
-                theme={theme}
-              />
-            ) : (
-              <DiaryPanel
-                tripId={tripId}
-                scheduleId={item.id}
-                isDark={isDark}
-                theme={theme}
-              />
-            )}
+            <ChecklistPanel
+              tripId={tripId}
+              scheduleId={item.id}
+              isDark={isDark}
+              theme={theme}
+            />
           </View>
         )}
       </View>
@@ -1030,60 +784,9 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', borderRadius: 3 },
   progressText: { fontSize: 12, fontWeight: '600', minWidth: 32, textAlign: 'right' },
 
-  /* Diary Panel */
-  diaryForm: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 16,
-  },
-  moodRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
-  moodLabel: { fontSize: 13, fontWeight: '600', marginRight: 4 },
-  moodBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  moodEmoji: { fontSize: 16 },
-  diaryInput: {
-    fontSize: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    minHeight: 72,
-    textAlignVertical: 'top',
-    marginBottom: 10,
-  },
-  diarySubmitBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    alignSelf: 'flex-end',
-  },
-  diarySubmitText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  diaryEntry: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 10,
-  },
-  diaryEntryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  diaryAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  diaryMood: { fontSize: 20 },
-  diaryAuthor: { fontSize: 14, fontWeight: '600' },
-  diaryEntryActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  diaryDate: { fontSize: 12 },
-  diaryContent: { fontSize: 14, lineHeight: 22 },
+  /* Expanded header */
+  expandedHeader: { paddingBottom: 8, marginBottom: 4 },
+  expandedTitle: { fontSize: 14, fontWeight: '700' },
 
   /* Empty */
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
