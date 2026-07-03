@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 웹 전용 대시보드 홈 화면
  * 캘린더 + 여행 그리드 + 사이드 패널 레이아웃
  * Metro 번들러가 .web.tsx를 우선 선택하여 웹에서만 사용됩니다.
@@ -93,6 +93,8 @@ export default function WebHomeScreen() {
   // 생성 폼 상태
   const [newTitle, setNewTitle] = useState('');
   const [newTheme, setNewTheme] = useState('CULTURE');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
   const [createError, setCreateError] = useState('');
 
   // 참가 폼 상태
@@ -150,9 +152,13 @@ export default function WebHomeScreen() {
       await createTripMutation.mutateAsync({
         title: newTitle.trim(),
         theme: newTheme,
+        startDate: newStartDate || undefined,
+        endDate: newEndDate || undefined,
       });
       setNewTitle('');
       setNewTheme('CULTURE');
+      setNewStartDate('');
+      setNewEndDate('');
       refetch();
     } catch (e: any) {
       setCreateError(e?.message || '여행 생성에 실패했습니다.');
@@ -468,6 +474,59 @@ export default function WebHomeScreen() {
               );
             })}
           </View>
+
+          {/* 여행 일정 선택 */}
+          <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>
+            여행 일정
+          </Text>
+          <View style={styles.dateRow}>
+            <View style={styles.dateInputWrap}>
+              <Text style={[styles.dateLabel, { color: dc.textMuted }]}>시작일</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.dateInput,
+                  {
+                    backgroundColor: dc.inputBg,
+                    borderColor: newStartDate ? colors.primary[500] : dc.inputBorder,
+                    color: dc.inputText,
+                  },
+                ]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={dc.placeholder}
+                value={newStartDate}
+                onChangeText={setNewStartDate}
+                maxLength={10}
+              />
+            </View>
+            <Text style={[styles.dateSep, { color: dc.textMuted }]}>~</Text>
+            <View style={styles.dateInputWrap}>
+              <Text style={[styles.dateLabel, { color: dc.textMuted }]}>종료일</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.dateInput,
+                  {
+                    backgroundColor: dc.inputBg,
+                    borderColor: newEndDate ? colors.primary[500] : dc.inputBorder,
+                    color: dc.inputText,
+                  },
+                ]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={dc.placeholder}
+                value={newEndDate}
+                onChangeText={setNewEndDate}
+                maxLength={10}
+              />
+            </View>
+          </View>
+          {newStartDate && newEndDate && (
+            <View style={[styles.datePreview, { backgroundColor: colors.primary[500] + '10' }]}>
+              <Text style={[styles.datePreviewText, { color: colors.primary[500] }]}>
+                📅 {formatDateRange(newStartDate, newEndDate)}
+              </Text>
+            </View>
+          )}
 
           {/* 생성 버튼 */}
           <Pressable
@@ -988,5 +1047,39 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginBottom: 8,
+  },
+  dateInputWrap: {
+    flex: 1,
+  },
+  dateLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  dateInput: {
+    marginBottom: 0,
+    textAlign: 'center',
+  },
+  dateSep: {
+    fontSize: 16,
+    fontWeight: '600',
+    paddingBottom: 12,
+  },
+  datePreview: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  datePreviewText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

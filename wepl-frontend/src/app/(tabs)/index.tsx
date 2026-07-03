@@ -76,6 +76,8 @@ export default function HomeScreen() {
   // 생성 폼
   const [newTitle, setNewTitle] = useState('');
   const [newTheme, setNewTheme] = useState('CULTURE');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
   const [createError, setCreateError] = useState('');
 
   // 참가 폼
@@ -108,10 +110,14 @@ export default function HomeScreen() {
       await createTripMutation.mutateAsync({
         title: newTitle.trim(),
         theme: newTheme,
+        startDate: newStartDate || undefined,
+        endDate: newEndDate || undefined,
       });
       setShowCreateModal(false);
       setNewTitle('');
       setNewTheme('CULTURE');
+      setNewStartDate('');
+      setNewEndDate('');
       refetch();
     } catch (e: any) {
       setCreateError(e?.message || '여행 생성에 실패했습니다.');
@@ -430,6 +436,52 @@ export default function HomeScreen() {
                 </Pressable>
               ))}
             </ScrollView>
+
+            {/* 여행 일정 */}
+            <Text style={[styles.modalLabel, { color: dynamicStyles.textSecondary }]}>
+              여행 일정
+            </Text>
+            <View style={styles.dateRow}>
+              <View style={styles.dateInputWrap}>
+                <Text style={[styles.dateSmallLabel, { color: dynamicStyles.textSecondary }]}>시작일</Text>
+                <TextInput
+                  style={[
+                    styles.modalInput,
+                    styles.dateInput,
+                    {
+                      backgroundColor: dynamicStyles.inputBg,
+                      borderColor: newStartDate ? '#667eea' : dynamicStyles.inputBorder,
+                      color: dynamicStyles.inputText,
+                    },
+                  ]}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={dynamicStyles.placeholderText}
+                  value={newStartDate}
+                  onChangeText={setNewStartDate}
+                  maxLength={10}
+                />
+              </View>
+              <Text style={[styles.dateSep, { color: dynamicStyles.textSecondary }]}>~</Text>
+              <View style={styles.dateInputWrap}>
+                <Text style={[styles.dateSmallLabel, { color: dynamicStyles.textSecondary }]}>종료일</Text>
+                <TextInput
+                  style={[
+                    styles.modalInput,
+                    styles.dateInput,
+                    {
+                      backgroundColor: dynamicStyles.inputBg,
+                      borderColor: newEndDate ? '#667eea' : dynamicStyles.inputBorder,
+                      color: dynamicStyles.inputText,
+                    },
+                  ]}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={dynamicStyles.placeholderText}
+                  value={newEndDate}
+                  onChangeText={setNewEndDate}
+                  maxLength={10}
+                />
+              </View>
+            </View>
 
             <Pressable
               onPress={handleCreateTrip}
@@ -790,5 +842,29 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     maxWidth: 480,
     width: '90%' as any,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginBottom: 16,
+  },
+  dateInputWrap: {
+    flex: 1,
+  },
+  dateSmallLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+    marginLeft: 4,
+  },
+  dateInput: {
+    marginBottom: 0,
+    textAlign: 'center' as const,
+  },
+  dateSep: {
+    fontSize: 16,
+    fontWeight: '600',
+    paddingBottom: 14,
   },
 });
