@@ -194,6 +194,8 @@ const styles = StyleSheet.create({
   desktopContainer: {
     flex: 1,
     flexDirection: 'row',
+    height: Platform.OS === 'web' ? '100vh' : '100%',
+    overflow: 'hidden',
   },
   sidebar: {
     width: SIDEBAR_WIDTH,
