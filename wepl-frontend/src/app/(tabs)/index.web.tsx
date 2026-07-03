@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
-import { useTrips, useCreateTrip, useJoinTrip } from '@/hooks/useTrips';
+import { useTrips, useCreateTrip, useJoinTrip, useDeleteTrip } from '@/hooks/useTrips';
 import Calendar from '@/components/web/Calendar';
 import { colors, getThemeColors } from '@/theme';
 
@@ -89,6 +89,7 @@ export default function WebHomeScreen() {
   const { data: trips, isLoading, refetch } = useTrips();
   const createTripMutation = useCreateTrip();
   const joinTripMutation = useJoinTrip();
+  const deleteTripMutation = useDeleteTrip();
 
   // 생성 폼 상태
   const [newTitle, setNewTitle] = useState('');
@@ -181,7 +182,19 @@ export default function WebHomeScreen() {
   };
 
   const handleTripClick = (tripId: string) => {
-    router.push(`/trip/${tripId}/wishlist`);
+    router.push(`/trip/${tripId}/wishlist` as any);
+  };
+
+  const handleDeleteTrip = async (tripId: string, title: string) => {
+    if (typeof window !== 'undefined' && !window.confirm(`"${title}" 여행을 삭제하시겠습니까?\n삭제하면 모든 일정, 위시리스트, 가계부 데이터가 함께 삭제됩니다.`)) {
+      return;
+    }
+    try {
+      await deleteTripMutation.mutateAsync(tripId);
+      refetch();
+    } catch (e: any) {
+      if (typeof window !== 'undefined') window.alert(e?.message || '삭제에 실패했습니다.');
+    }
   };
 
   // ─── 로딩 상태 ───
@@ -298,7 +311,7 @@ export default function WebHomeScreen() {
                     />
 
                     <View style={styles.cardBody}>
-                      {/* 제목 + 테마 뱃지 */}
+                      {/* 제목 + 테마 뱃지 + 삭제 */}
                       <View style={styles.cardTop}>
                         <Text
                           style={[
@@ -309,20 +322,35 @@ export default function WebHomeScreen() {
                         >
                           {item.title}
                         </Text>
-                        <View
-                          style={[
-                            styles.themeBadge,
-                            { backgroundColor: gradient[0] + '18' },
-                          ]}
-                        >
-                          <Text
+                        <View style={styles.cardTopRight}>
+                          <View
                             style={[
-                              styles.themeBadgeText,
-                              { color: gradient[0] },
+                              styles.themeBadge,
+                              { backgroundColor: gradient[0] + '18' },
                             ]}
                           >
-                            {themeLabel}
-                          </Text>
+                            <Text
+                              style={[
+                                styles.themeBadgeText,
+                                { color: gradient[0] },
+                              ]}
+                            >
+                              {themeLabel}
+                            </Text>
+                          </View>
+                          <Pressable
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTrip(item.id, item.title);
+                            }}
+                            style={({ hovered }: any) => [
+                              styles.deleteBtn,
+                              hovered && styles.deleteBtnHovered,
+                              { cursor: 'pointer' } as any,
+                            ]}
+                          >
+                            <Text style={styles.deleteBtnText}>🗑️</Text>
+                          </Pressable>
                         </View>
                       </View>
 
@@ -842,6 +870,26 @@ const styles = StyleSheet.create({
   themeBadgeText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  cardTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.5,
+  },
+  deleteBtnHovered: {
+    opacity: 1,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  deleteBtnText: {
+    fontSize: 14,
   },
   cardMeta: {
     flexDirection: 'row',

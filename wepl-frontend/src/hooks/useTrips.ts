@@ -121,3 +121,18 @@ export function useTripMembers(tripId: string) {
     enabled: !!tripId,
   });
 }
+
+/**
+ * 여행 삭제
+ */
+export function useDeleteTrip() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (tripId: string) =>
+      api.delete(`/api/v1/trips/${tripId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: tripKeys.lists() });
+    },
+  });
+}

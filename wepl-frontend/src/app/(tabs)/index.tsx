@@ -12,13 +12,14 @@ import {
   Animated as RNAnimated,
   ScrollView,
   Platform,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
-import { useTrips, useCreateTrip, useJoinTrip } from '@/hooks/useTrips';
+import { useTrips, useCreateTrip, useJoinTrip, useDeleteTrip } from '@/hooks/useTrips';
 import { useResponsive } from '@/hooks/useResponsive';
 
 // 여행 테마 → 그라데이션 색상 매핑
@@ -67,6 +68,7 @@ export default function HomeScreen() {
   const { data: trips, isLoading, refetch, isRefetching } = useTrips();
   const createTripMutation = useCreateTrip();
   const joinTripMutation = useJoinTrip();
+  const deleteTripMutation = useDeleteTrip();
 
   // 모달 상태
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -158,6 +160,33 @@ export default function HomeScreen() {
     placeholderText: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
   };
 
+  // 여행 삭제 핸들러
+  const handleDeleteTrip = (tripId: string, title: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`"${title}" 여행을 삭제하시겠습니까?`)) {
+        deleteTripMutation.mutateAsync(tripId).then(() => refetch()).catch(() => {});
+      }
+    } else {
+      Alert.alert(
+        '여행 삭제',
+        `"${title}" 여행을 삭제하시겠습니까?\n모든 데이터가 함께 삭제됩니다.`,
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '삭제',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteTripMutation.mutateAsync(tripId);
+                refetch();
+              } catch {}
+            },
+          },
+        ],
+      );
+    }
+  };
+
   // 여행 카드 렌더링
   const renderTripCard = ({ item }: { item: any }) => {
     const gradient = THEME_GRADIENTS[item.theme] || THEME_GRADIENTS.DEFAULT;
@@ -170,6 +199,7 @@ export default function HomeScreen() {
     return (
       <Pressable
         onPress={() => router.push(`/trip/${item.id}/wishlist`)}
+        onLongPress={() => handleDeleteTrip(item.id, item.title)}
         style={({ pressed }) => [
           styles.tripCard,
           {
