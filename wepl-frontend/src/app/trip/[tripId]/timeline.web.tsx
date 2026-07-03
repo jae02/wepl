@@ -223,7 +223,7 @@ function WishlistDropdown({
   };
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={true} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={dropStyles.overlay} onPress={onClose}>
         <Pressable style={[dropStyles.container, {
           backgroundColor: isDark ? '#1a1a2e' : '#ffffff',
@@ -389,7 +389,7 @@ function ScheduleDetailModal({
   };
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={true} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={dropStyles.overlay} onPress={onClose}>
         <Pressable style={[dropStyles.container, {
           backgroundColor: isDark ? '#1a1a2e' : '#ffffff',
