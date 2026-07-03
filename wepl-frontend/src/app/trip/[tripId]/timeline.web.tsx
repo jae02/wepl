@@ -188,12 +188,14 @@ function ChecklistPanel({
 function WishlistDropdown({
   tripId,
   date,
+  schedulesLength,
   isDark,
   theme,
   onClose,
 }: {
   tripId: string;
   date: string;
+  schedulesLength: number;
   isDark: boolean;
   theme: ReturnType<typeof getThemeColors>;
   onClose: () => void;
@@ -201,12 +203,17 @@ function WishlistDropdown({
   const { data: wishlist } = useWishlist(tripId);
   const createSchedule = useCreateSchedule(tripId);
   const [customTitle, setCustomTitle] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
 
   const handleAddFromWishlist = (item: WishlistItem) => {
     createSchedule.mutate({
       date,
       wishlistPlaceId: item.id,
       customTitle: item.name,
+      orderIndex: schedulesLength,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
     }, {
       onSuccess: () => onClose(),
     });
@@ -217,6 +224,9 @@ function WishlistDropdown({
     createSchedule.mutate({
       date,
       customTitle: customTitle.trim(),
+      orderIndex: schedulesLength,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
     }, {
       onSuccess: () => onClose(),
     });
@@ -237,6 +247,42 @@ function WishlistDropdown({
             <Pressable onPress={onClose} style={{ cursor: 'pointer' } as any}>
               <Text style={{ fontSize: 20, color: theme.textSecondary }}>✕</Text>
             </Pressable>
+          </View>
+
+          {/* Time input */}
+          <View style={{ padding: 16, borderBottomWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textSecondary, marginBottom: 8 }}>
+              ⏰ 시간 (선택)
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextInput
+                style={{
+                  width: 100, fontSize: 14, fontWeight: '700', textAlign: 'center',
+                  paddingVertical: 10, borderRadius: 10, borderWidth: 1,
+                  color: colors.primary[500],
+                  backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.06)',
+                  borderColor: colors.primary[500] + '30',
+                }}
+                value={startTime}
+                onChangeText={setStartTime}
+                placeholder="HH:MM"
+                placeholderTextColor={theme.textTertiary}
+              />
+              <Text style={{ fontSize: 16, fontWeight: '600', color: theme.textTertiary }}>~</Text>
+              <TextInput
+                style={{
+                  width: 100, fontSize: 14, fontWeight: '700', textAlign: 'center',
+                  paddingVertical: 10, borderRadius: 10, borderWidth: 1,
+                  color: colors.primary[500],
+                  backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.06)',
+                  borderColor: colors.primary[500] + '30',
+                }}
+                value={endTime}
+                onChangeText={setEndTime}
+                placeholder="HH:MM"
+                placeholderTextColor={theme.textTertiary}
+              />
+            </View>
           </View>
 
           {/* Custom input */}
@@ -882,6 +928,7 @@ export default function TimelineWebScreen() {
         <WishlistDropdown
           tripId={tripId ?? ''}
           date={selectedDate}
+          schedulesLength={totalCount}
           isDark={isDark}
           theme={theme}
           onClose={() => setIsAddDropdownOpen(false)}

@@ -53,7 +53,7 @@ export function useCreateSchedule(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { date: string; wishlistPlaceId?: string; customTitle?: string }) =>
+    mutationFn: (data: { date: string; wishlistPlaceId?: string; customTitle?: string; orderIndex: number; startTime?: string; endTime?: string }) =>
       api.post(`/api/v1/trips/${tripId}/schedules`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
