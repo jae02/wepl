@@ -198,7 +198,7 @@ export default function HomeScreen() {
 
     return (
       <Pressable
-        onPress={() => router.push(`/trip/${item.id}/wishlist`)}
+        onPress={() => router.push(`/trip/${item.id}/timeline`)}
         onLongPress={() => handleDeleteTrip(item.id, item.title)}
         style={({ pressed }) => [
           styles.tripCard,

@@ -12,7 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
 import {
-  useExpenses, useCreateExpense, useDeleteExpense,
+  useExpenses, useCreateExpense, useDeleteExpense, useUpdateExpense,
   useExpenseStats, useExpenseSummary, useToggleSplitPaid,
 } from '@/hooks/useExpenses';
 import { useTripMembers } from '@/hooks/useTrips';
@@ -62,6 +62,7 @@ export default function ExpenseWebScreen() {
   const { data: summary } = useExpenseSummary(tripId ?? '');
   const { data: members } = useTripMembers(tripId ?? '');
   const createMutation = useCreateExpense(tripId ?? '');
+  const updateMutation = useUpdateExpense(tripId ?? '');
   const deleteMutation = useDeleteExpense(tripId ?? '');
   const togglePaidMutation = useToggleSplitPaid(tripId ?? '');
 
@@ -75,10 +76,11 @@ export default function ExpenseWebScreen() {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editExpenseId, setEditExpenseId] = useState<string | null>(null);
 
   // ── 통계 계산 ──
   const totalAmount = useMemo(
-    () => (expenses ?? []).reduce((sum: number, e: any) => sum + (e.amount ?? 0), 0),
+    () => (expenses ?? []).reduce((sum: number, e: any) => sum + Number(e.amount ?? 0), 0),
     [expenses],
   );
   const memberCount = (members as any[])?.length || 1;
@@ -88,7 +90,7 @@ export default function ExpenseWebScreen() {
   // 카테고리별 합계
   const catTotals: Record<string, number> = {};
   (expenses ?? []).forEach((e: any) => {
-    catTotals[e.category] = (catTotals[e.category] ?? 0) + (e.amount ?? 0);
+    catTotals[e.category] = (catTotals[e.category] ?? 0) + Number(e.amount ?? 0);
   });
   const maxCatAmount = Math.max(...Object.values(catTotals), 1);
 
@@ -121,20 +123,30 @@ export default function ExpenseWebScreen() {
   };
 
   // ── 모달 열기/리셋 ──
-  const openModal = () => {
-    setDesc('');
-    setAmount('');
-    setCurrency('KRW');
-    setCategory('FOOD');
-    setSplitType('EQUAL');
-    setFormError('');
-    // 기본으로 전체 멤버 선택
-    if (members) {
-      const allIds = (members as any[]).map((m: any) => m.user?.id ?? m.userId);
-      setSelectedMemberIds(allIds);
+  const openModal = (expense?: any) => {
+    if (expense) {
+      setEditExpenseId(expense.id);
+      setDesc(expense.description);
+      setAmount(expense.amount.toString());
+      setCurrency(expense.currency || 'KRW');
+      setCategory(expense.category);
+      setSplitType('EQUAL'); // simplified
+      setSelectedMemberIds(expense.splits ? expense.splits.map((s: any) => s.user.id) : []);
     } else {
-      setSelectedMemberIds([]);
+      setEditExpenseId(null);
+      setDesc('');
+      setAmount('');
+      setCurrency('KRW');
+      setCategory('FOOD');
+      setSplitType('EQUAL');
+      if (members) {
+        const allIds = (members as any[]).map((m: any) => m.user?.id ?? m.userId);
+        setSelectedMemberIds(allIds);
+      } else {
+        setSelectedMemberIds([]);
+      }
     }
+    setFormError('');
     setShowModal(true);
   };
 
@@ -155,18 +167,28 @@ export default function ExpenseWebScreen() {
       return;
     }
     try {
-      await createMutation.mutateAsync({
-        description: desc.trim(),
-        amount: numAmount,
-        currency,
-        category,
-        splitType: splitType === 'EQUAL' ? 'EQUAL' : 'CUSTOM',
-        splitUserIds: selectedMemberIds,
-      });
+      if (editExpenseId) {
+        await updateMutation.mutateAsync({
+          expenseId: editExpenseId,
+          description: desc.trim(),
+          amount: numAmount,
+          currency,
+          category,
+          splitUserIds: selectedMemberIds,
+        });
+      } else {
+        await createMutation.mutateAsync({
+          description: desc.trim(),
+          amount: numAmount,
+          currency,
+          category,
+          splitUserIds: selectedMemberIds,
+        });
+      }
       setShowModal(false);
       refetch();
     } catch (e: any) {
-      setFormError(e?.message || '추가 실패');
+      setFormError(e?.message || '저장 실패');
     }
   };
 
@@ -190,10 +212,11 @@ export default function ExpenseWebScreen() {
   // ═══════════════════════════════════════════════════════════════════════════════
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.bg }]}
-      contentContainerStyle={styles.contentContainer}
-    >
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.inner}>
         {/* ── 헤더 ── */}
         <View style={styles.header}>
@@ -440,32 +463,36 @@ export default function ExpenseWebScreen() {
                     <View style={styles.tdAction}>
                       {isDeleting ? (
                         <View style={styles.deleteConfirmRow}>
-                          <Pressable
-                            onPress={() => handleDelete(item.id)}
-                            style={[styles.confirmDeleteBtn, { cursor: 'pointer' } as any]}
-                          >
+                          <Pressable onPress={() => handleDelete(item.id)} style={[styles.confirmDeleteBtn, { cursor: 'pointer' } as any]}>
                             <Text style={styles.confirmDeleteText}>삭제</Text>
                           </Pressable>
-                          <Pressable
-                            onPress={() => setDeleteConfirmId(null)}
-                            style={[styles.cancelDeleteBtn, { cursor: 'pointer' } as any]}
-                          >
-                            <Text style={[styles.cancelDeleteText, { color: theme.textSecondary }]}>
-                              취소
-                            </Text>
+                          <Pressable onPress={() => setDeleteConfirmId(null)} style={[styles.cancelDeleteBtn, { cursor: 'pointer' } as any]}>
+                            <Text style={[styles.cancelDeleteText, { color: theme.textSecondary }]}>취소</Text>
                           </Pressable>
                         </View>
                       ) : (
-                        <Pressable
-                          onPress={() => setDeleteConfirmId(item.id)}
-                          style={({ hovered }: any) => [
-                            styles.deleteBtn,
-                            hovered && { backgroundColor: colors.error + '15' },
-                            { cursor: 'pointer' } as any,
-                          ]}
-                        >
-                          <Text style={[styles.deleteBtnText, { color: colors.error }]}>🗑</Text>
-                        </Pressable>
+                        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+                          <Pressable
+                            onPress={() => openModal(item)}
+                            style={({ hovered }: any) => [
+                              styles.deleteBtn,
+                              hovered && { backgroundColor: theme.border },
+                              { cursor: 'pointer' } as any,
+                            ]}
+                          >
+                            <Text style={[styles.deleteBtnText, { color: theme.textSecondary }]}>✏️</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setDeleteConfirmId(item.id)}
+                            style={({ hovered }: any) => [
+                              styles.deleteBtn,
+                              hovered && { backgroundColor: colors.error + '15' },
+                              { cursor: 'pointer' } as any,
+                            ]}
+                          >
+                            <Text style={[styles.deleteBtnText, { color: colors.error }]}>🗑</Text>
+                          </Pressable>
+                        </View>
                       )}
                     </View>
                   </Pressable>
@@ -475,9 +502,10 @@ export default function ExpenseWebScreen() {
           )}
         </View>
       </View>
+      </ScrollView>
 
       {/* ── FAB ── */}
-      <Pressable onPress={openModal} style={[styles.fab, { cursor: 'pointer' } as any]}>
+      <Pressable onPress={() => openModal()} style={[styles.fab, { cursor: 'pointer' } as any]}>
         <LinearGradient colors={['#667eea', '#764ba2']} style={styles.fabGradient}>
           <Text style={styles.fabText}>+ 지출 추가</Text>
         </LinearGradient>
@@ -486,14 +514,11 @@ export default function ExpenseWebScreen() {
       {/* ── 지출 추가 모달 ── */}
       <Modal visible={showModal} transparent animationType="fade">
         <View style={styles.overlay}>
-          <ScrollView
-            contentContainerStyle={styles.modalScrollContent}
-            showsVerticalScrollIndicator={false}
-          >
+          <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <View style={[styles.modal, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>새 지출 추가</Text>
-
-              {/* 내용 */}
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                {editExpenseId ? '지출 내역 수정' : '새 지출 추가'}
+              </Text>
               <TextInput
                 style={[
                   styles.input,
@@ -668,7 +693,7 @@ export default function ExpenseWebScreen() {
                   );
                 })}
               </View>
-              {selectedMemberIds.length > 0 && amount && (
+              {selectedMemberIds.length > 0 && !!amount && (
                 <View style={[styles.splitPreview, { backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)' }]}>
                   <Text style={[styles.splitPreviewText, { color: colors.primary[500] }]}>
                     💡 {selectedMemberIds.length}명 ×{' '}
@@ -706,7 +731,7 @@ export default function ExpenseWebScreen() {
           </ScrollView>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -915,7 +940,7 @@ const styles = StyleSheet.create({
 
   // ── FAB ──
   fab: {
-    position: 'fixed' as any,
+    position: 'absolute',
     bottom: 32,
     right: 32,
     borderRadius: 16,

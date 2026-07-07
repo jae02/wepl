@@ -4,7 +4,7 @@
  * Metro 번들러가 .web.tsx를 우선 선택하여 웹에서만 사용됩니다.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,15 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Modal,
+  Animated as RNAnimated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTrips, useCreateTrip, useJoinTrip, useDeleteTrip } from '@/hooks/useTrips';
+import { useMySchedulesByDate } from '@/hooks/useSchedules';
 import Calendar from '@/components/web/Calendar';
 import { colors, getThemeColors } from '@/theme';
 
@@ -96,11 +99,43 @@ export default function WebHomeScreen() {
   const [newTheme, setNewTheme] = useState('CULTURE');
   const [newStartDate, setNewStartDate] = useState('');
   const [newEndDate, setNewEndDate] = useState('');
+
+  const handleStartDateChange = (date: string) => {
+    setNewStartDate(date);
+    if (newEndDate && date > newEndDate) setNewEndDate(date);
+  };
+  const handleEndDateChange = (date: string) => {
+    setNewEndDate(date);
+    if (newStartDate && date < newStartDate) setNewStartDate(date);
+  };
   const [createError, setCreateError] = useState('');
 
   // 참가 폼 상태
   const [inviteCode, setInviteCode] = useState('');
   const [joinError, setJoinError] = useState('');
+
+  // 모달 및 FAB 상태
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showFABMenu, setShowFABMenu] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  const selectedDateStr = selectedDate ? new Date(selectedDate.getTime() - selectedDate.getTimezoneOffset() * 60000).toISOString().split('T')[0] : undefined;
+  const { data: daySchedules, isLoading: isLoadingSchedules } = useMySchedulesByDate(selectedDateStr);
+
+  // FAB 애니메이션
+  const fabRotation = useRef(new RNAnimated.Value(0)).current;
+  useEffect(() => {
+    RNAnimated.timing(fabRotation, {
+      toValue: showFABMenu ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [showFABMenu]);
+  const fabRotateInterpolate = fabRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '45deg'],
+  });
 
   // 다가오는 여행 (미래 날짜, 시작일 기준 오름차순)
   const upcomingTrips = useMemo(() => {
@@ -120,6 +155,21 @@ export default function WebHomeScreen() {
       )
       .slice(0, 5);
   }, [trips]);
+
+  // 선택된 날짜에 포함되는 여행들 계산
+  const activeTripsOnSelectedDate = useMemo(() => {
+    if (!selectedDate || !trips) return [];
+    const target = new Date(selectedDate);
+    target.setHours(0,0,0,0);
+    const targetTime = target.getTime();
+    
+    return trips.filter((t: any) => {
+      if (!t.startDate || !t.endDate) return false;
+      const s = new Date(t.startDate); s.setHours(0,0,0,0);
+      const e = new Date(t.endDate); e.setHours(23,59,59,999);
+      return targetTime >= s.getTime() && targetTime <= e.getTime();
+    });
+  }, [selectedDate, trips]);
 
   // 다이나믹 색상
   const dc = {
@@ -182,7 +232,7 @@ export default function WebHomeScreen() {
   };
 
   const handleTripClick = (tripId: string) => {
-    router.push(`/trip/${tripId}/wishlist` as any);
+    router.push(`/trip/${tripId}/timeline` as any);
   };
 
   const handleDeleteTrip = async (tripId: string, title: string) => {
@@ -211,6 +261,22 @@ export default function WebHomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: dc.bg }]}>
+      <style>{`
+        input[type="date"], input[type="time"] {
+          font-family: inherit;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator {
+          cursor: pointer;
+          opacity: 0.5;
+          transition: 0.2s;
+          filter: ${isDark ? 'invert(1)' : 'none'};
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover,
+        input[type="time"]::-webkit-calendar-picker-indicator:hover {
+          opacity: 1;
+        }
+      `}</style>
       {/* main area */}
       <ScrollView
         style={styles.mainArea}
@@ -245,7 +311,8 @@ export default function WebHomeScreen() {
           </View>
           <Calendar
             trips={trips ?? []}
-            onTripClick={(tripId: string) => handleTripClick(tripId)}
+            selectedDate={selectedDate}
+            onDateClick={setSelectedDate}
           />
         </View>
 
@@ -418,332 +485,317 @@ export default function WebHomeScreen() {
         contentContainerStyle={styles.sidePanelContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 새 여행 만들기 */}
-        <View
-          style={[
-            styles.panelCard,
-            {
-              backgroundColor: dc.sectionBg,
-              borderColor: dc.sectionBorder,
-            },
-          ]}
-        >
-          <View style={styles.panelCardHeader}>
-            <Text style={styles.panelCardIcon}>➕</Text>
-            <Text style={[styles.panelCardTitle, { color: dc.textPrimary }]}>
-              새 여행 만들기
-            </Text>
+        <View style={styles.panelCardHeader}>
+          <Text style={styles.panelCardIcon}>🕒</Text>
+          <Text style={[styles.panelCardTitle, { color: dc.textPrimary }]}>
+            {selectedDate ? formatDate(selectedDate.toISOString()) + ' 일정' : '날짜를 선택하세요'}
+          </Text>
+        </View>
+
+        {!selectedDate ? (
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <Text style={{ fontSize: 14, color: dc.textMuted }}>캘린더에서 날짜를 클릭하면 일정이 표시됩니다.</Text>
           </View>
-
-          {createError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>⚠️ {createError}</Text>
-            </View>
-          ) : null}
-
-          {/* 제목 입력 */}
-          <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>
-            여행 이름
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: dc.inputBg,
-                borderColor: dc.inputBorder,
-                color: dc.inputText,
-              },
-            ]}
-            placeholder="예: 도쿄 여행 🗼"
-            placeholderTextColor={dc.placeholder}
-            value={newTitle}
-            onChangeText={setNewTitle}
-          />
-
-          {/* 테마 선택 */}
-          <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>
-            여행 테마
-          </Text>
-          <View style={styles.themeGrid}>
-            {THEME_OPTIONS.map(([key, label]) => {
-              const isSelected = newTheme === key;
-              const gradient = THEME_GRADIENTS[key] || THEME_GRADIENTS.DEFAULT;
+        ) : isLoadingSchedules ? (
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <ActivityIndicator color={colors.primary[500]} />
+          </View>
+        ) : !daySchedules || daySchedules.length === 0 ? (
+          <View style={{ alignItems: 'center', marginTop: 40, paddingHorizontal: 20 }}>
+            <Text style={{ fontSize: 14, color: dc.textMuted, marginBottom: 16 }}>이 날짜에 추가된 세부 일정이 없습니다.</Text>
+            {activeTripsOnSelectedDate.map((trip: any) => (
+              <Pressable
+                key={trip.id}
+                onPress={() => handleTripClick(trip.id)}
+                style={({ hovered }: any) => [{
+                  backgroundColor: THEME_GRADIENTS[trip.theme]?.[0] || colors.primary[500],
+                  paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12,
+                  flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%',
+                  justifyContent: 'center', cursor: 'pointer',
+                }, hovered && { opacity: 0.85 }] as any}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+                  '{trip.title}' 타임라인으로 이동
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <View style={{ gap: 12, marginTop: 12 }}>
+            {daySchedules.map((schedule: any) => {
+              const gradient = THEME_GRADIENTS[schedule.trip.theme] || THEME_GRADIENTS.DEFAULT;
+              let title = schedule.wishlistPlace?.name ?? schedule.customTitle ?? '제목 없음';
+              let time = schedule.startTime ? `${schedule.startTime}${schedule.endTime ? ` - ${schedule.endTime}` : ''}` : '시간 미정';
+              
+              if (schedule.isAccommodation) {
+                title = `🏨 ${title}`;
+                if (schedule.date) {
+                  const start = formatDate(schedule.date);
+                  const end = schedule.endDate ? formatDate(schedule.endDate) : start;
+                  time = start !== end ? `숙박 (${start} ~ ${end})` : `숙박 (${start})`;
+                } else {
+                  time = '숙박';
+                }
+              }
               return (
                 <Pressable
-                  key={key}
-                  onPress={() => setNewTheme(key)}
-                  style={({ hovered }) => [
-                    styles.themeOption,
+                  key={schedule.id}
+                  onPress={() => router.push(`/trip/${schedule.tripId}/timeline`)}
+                  style={({ hovered }: any) => [
                     {
-                      backgroundColor: isSelected
-                        ? gradient[0] + '1A'
-                        : dc.inputBg,
-                      borderColor: isSelected ? gradient[0] : dc.inputBorder,
+                      backgroundColor: dc.cardBg,
+                      borderColor: dc.cardBorder,
+                      borderWidth: 1,
+                      borderRadius: 12,
+                      padding: 16,
+                      cursor: 'pointer',
                     },
-                    hovered && !isSelected && {
-                      backgroundColor: dc.hoverBg,
-                    },
-                    { cursor: 'pointer' } as any,
-                  ]}
+                    hovered && { backgroundColor: dc.hoverBg }
+                  ] as any}
                 >
-                  <Text
-                    style={[
-                      styles.themeOptionText,
-                      {
-                        color: isSelected ? gradient[0] : dc.textSecondary,
-                        fontWeight: isSelected ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    {label}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: gradient[0] }}>
+                      {schedule.trip.title}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: dc.textSecondary, fontWeight: '600' }}>
+                      {time}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: dc.textPrimary, marginBottom: 4 }}>
+                    {title}
                   </Text>
+                  {schedule.memo && (
+                    <Text style={{ fontSize: 13, color: dc.textSecondary }} numberOfLines={1}>
+                      📝 {schedule.memo}
+                    </Text>
+                  )}
                 </Pressable>
               );
             })}
           </View>
+        )}
+      </ScrollView>
 
-          {/* 여행 일정 선택 */}
-          <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>
-            여행 일정
-          </Text>
-          <View style={styles.dateRow}>
-            <View style={styles.dateInputWrap}>
-              <Text style={[styles.dateLabel, { color: dc.textMuted }]}>시작일</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.dateInput,
-                  {
-                    backgroundColor: dc.inputBg,
-                    borderColor: newStartDate ? colors.primary[500] : dc.inputBorder,
-                    color: dc.inputText,
-                  },
-                ]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={dc.placeholder}
-                value={newStartDate}
-                onChangeText={setNewStartDate}
-                maxLength={10}
-              />
-            </View>
-            <Text style={[styles.dateSep, { color: dc.textMuted }]}>~</Text>
-            <View style={styles.dateInputWrap}>
-              <Text style={[styles.dateLabel, { color: dc.textMuted }]}>종료일</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.dateInput,
-                  {
-                    backgroundColor: dc.inputBg,
-                    borderColor: newEndDate ? colors.primary[500] : dc.inputBorder,
-                    color: dc.inputText,
-                  },
-                ]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={dc.placeholder}
-                value={newEndDate}
-                onChangeText={setNewEndDate}
-                maxLength={10}
-              />
-            </View>
-          </View>
-          {!!newStartDate && !!newEndDate && (
-            <View style={[styles.datePreview, { backgroundColor: colors.primary[500] + '10' }]}>
-              <Text style={[styles.datePreviewText, { color: colors.primary[500] }]}>
-                📅 {formatDateRange(newStartDate, newEndDate)}
-              </Text>
-            </View>
-          )}
-
-          {/* 생성 버튼 */}
-          <Pressable
-            onPress={handleCreateTrip}
-            disabled={createTripMutation.isPending}
-            style={({ pressed }) => [
-              styles.gradientButton,
-              pressed && { opacity: 0.85 },
-              createTripMutation.isPending && { opacity: 0.6 },
-              { cursor: 'pointer' } as any,
-            ]}
-          >
-            <LinearGradient
-              colors={[colors.primary[500], colors.primary[700]]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.gradientButtonInner}
+      {/* FAB + 메뉴 */}
+      {showFABMenu && (
+        <Pressable
+          style={styles.fabOverlay}
+          onPress={() => setShowFABMenu(false)}
+        >
+          <View style={[styles.fabMenu, { bottom: 90, right: 20 }]}>
+            <Pressable
+              onPress={() => {
+                setShowFABMenu(false);
+                setShowCreateModal(true);
+              }}
+              style={({ pressed }: any) => [
+                styles.fabMenuItem,
+                { backgroundColor: dc.panelBg },
+                pressed && { opacity: 0.8 },
+                { cursor: 'pointer' } as any
+              ]}
             >
-              {createTripMutation.isPending ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.gradientButtonText}>여행 만들기</Text>
-              )}
-            </LinearGradient>
-          </Pressable>
-        </View>
-
-        {/* 구분선 */}
-        <View style={[styles.panelDivider, { backgroundColor: dc.panelBorder }]} />
-
-        {/* 초대코드 참여 */}
-        <View
-          style={[
-            styles.panelCard,
-            {
-              backgroundColor: dc.sectionBg,
-              borderColor: dc.sectionBorder,
-            },
-          ]}
-        >
-          <View style={styles.panelCardHeader}>
-            <Text style={styles.panelCardIcon}>🔗</Text>
-            <Text style={[styles.panelCardTitle, { color: dc.textPrimary }]}>
-              초대코드 참여
-            </Text>
-          </View>
-
-          {joinError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>⚠️ {joinError}</Text>
-            </View>
-          ) : null}
-
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: dc.inputBg,
-                borderColor: dc.inputBorder,
-                color: dc.inputText,
-              },
-            ]}
-            placeholder="초대 코드를 입력하세요"
-            placeholderTextColor={dc.placeholder}
-            value={inviteCode}
-            onChangeText={setInviteCode}
-            autoCapitalize="characters"
-          />
-
-          <Pressable
-            onPress={handleJoinTrip}
-            disabled={joinTripMutation.isPending}
-            style={({ pressed }) => [
-              styles.joinButton,
-              {
-                backgroundColor: dc.inputBg,
-                borderColor: colors.primary[500] + '40',
-              },
-              pressed && { opacity: 0.85 },
-              joinTripMutation.isPending && { opacity: 0.6 },
-              { cursor: 'pointer' } as any,
-            ]}
-          >
-            {joinTripMutation.isPending ? (
-              <ActivityIndicator color={colors.primary[500]} size="small" />
-            ) : (
-              <Text
-                style={[styles.joinButtonText, { color: colors.primary[500] }]}
-              >
-                참가하기
+              <Text style={styles.fabMenuIcon}>🌍</Text>
+              <Text style={[styles.fabMenuText, { color: dc.textPrimary }]}>
+                새 여행 만들기
               </Text>
-            )}
-          </Pressable>
-        </View>
-
-        {/* 구분선 */}
-        <View style={[styles.panelDivider, { backgroundColor: dc.panelBorder }]} />
-
-        {/* 다가오는 여행 */}
-        <View
-          style={[
-            styles.panelCard,
-            {
-              backgroundColor: dc.sectionBg,
-              borderColor: dc.sectionBorder,
-            },
-          ]}
-        >
-          <View style={styles.panelCardHeader}>
-            <Text style={styles.panelCardIcon}>⏰</Text>
-            <Text style={[styles.panelCardTitle, { color: dc.textPrimary }]}>
-              다가오는 여행
-            </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setShowFABMenu(false);
+                setShowJoinModal(true);
+              }}
+              style={({ pressed }: any) => [
+                styles.fabMenuItem,
+                { backgroundColor: dc.panelBg },
+                pressed && { opacity: 0.8 },
+                { cursor: 'pointer' } as any
+              ]}
+            >
+              <Text style={styles.fabMenuIcon}>🔗</Text>
+              <Text style={[styles.fabMenuText, { color: dc.textPrimary }]}>
+                초대 코드 입력
+              </Text>
+            </Pressable>
           </View>
+        </Pressable>
+      )}
 
-          {upcomingTrips.length === 0 ? (
-            <Text style={[styles.noUpcoming, { color: dc.textMuted }]}>
-              예정된 여행이 없습니다
+      <Pressable
+        onPress={() => setShowFABMenu(!showFABMenu)}
+        style={[styles.fab, { bottom: 24 }, { cursor: 'pointer' } as any]}
+      >
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={styles.fabGradient}
+        >
+          <RNAnimated.Text
+            style={[styles.fabIcon, { transform: [{ rotate: fabRotateInterpolate }] }]}
+          >
+            ＋
+          </RNAnimated.Text>
+        </LinearGradient>
+      </Pressable>
+
+      {/* 여행 생성 모달 */}
+      <Modal
+        visible={showCreateModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
+          onPress={() => setShowCreateModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: dc.panelBg, width: 400, maxWidth: '90%' }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: dc.textPrimary, marginBottom: 20, fontSize: 18, fontWeight: '700' }]}>
+              🌍 새 여행 만들기
             </Text>
-          ) : (
-            <View style={styles.upcomingList}>
-              {upcomingTrips.map((trip: any) => {
-                const dDay = getDDay(trip.startDate);
-                const gradient =
-                  THEME_GRADIENTS[trip.theme] || THEME_GRADIENTS.DEFAULT;
+
+            {createError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {createError}</Text>
+              </View>
+            ) : null}
+
+            <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>여행 이름</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: dc.inputBg, borderColor: dc.inputBorder, color: dc.inputText }]}
+              placeholder="예: 도쿄 여행 🗼"
+              placeholderTextColor={dc.placeholder}
+              value={newTitle}
+              onChangeText={setNewTitle}
+            />
+
+            <Text style={[styles.inputLabel, { color: dc.textSecondary, marginTop: 16 }]}>여행 테마</Text>
+            <View style={[styles.themeGrid, { marginBottom: 16 }]}>
+              {THEME_OPTIONS.map(([key, label]) => {
+                const isSelected = newTheme === key;
+                const gradient = THEME_GRADIENTS[key] || THEME_GRADIENTS.DEFAULT;
                 return (
                   <Pressable
-                    key={trip.id}
-                    onPress={() => handleTripClick(trip.id)}
-                    style={({ pressed, hovered }) => [
-                      styles.upcomingItem,
-                      hovered && {
-                        backgroundColor: dc.hoverBg,
+                    key={key}
+                    onPress={() => setNewTheme(key)}
+                    style={({ hovered }: any) => [
+                      styles.themeOption,
+                      {
+                        backgroundColor: isSelected ? gradient[0] + '1A' : dc.inputBg,
+                        borderColor: isSelected ? gradient[0] : dc.inputBorder,
+                        flex: undefined, width: '31%', marginBottom: 8,
                       },
-                      pressed && { opacity: 0.85 },
+                      hovered && !isSelected && { backgroundColor: dc.hoverBg },
                       { cursor: 'pointer' } as any,
                     ]}
                   >
-                    {/* D-day 뱃지 */}
-                    <View
-                      style={[
-                        styles.ddayBadge,
-                        { backgroundColor: dc.ddayBg },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.ddayText,
-                          { color: colors.primary[400] },
-                        ]}
-                      >
-                        {dDay === 0 ? 'D-Day' : `D-${dDay}`}
-                      </Text>
-                    </View>
-
-                    {/* 정보 */}
-                    <View style={styles.upcomingInfo}>
-                      <Text
-                        style={[
-                          styles.upcomingTitle,
-                          { color: dc.textPrimary },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {trip.title}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.upcomingDate,
-                          { color: dc.textSecondary },
-                        ]}
-                      >
-                        {formatDate(trip.startDate)}
-                      </Text>
-                    </View>
-
-                    {/* 테마 색상 점 */}
-                    <View
-                      style={[
-                        styles.themeDot,
-                        { backgroundColor: gradient[0] },
-                      ]}
-                    />
+                    <Text style={[styles.themeOptionText, { color: isSelected ? gradient[0] : dc.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
+                      {label}
+                    </Text>
                   </Pressable>
                 );
               })}
             </View>
-          )}
-        </View>
-      </ScrollView>
+
+            <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>여행 일정</Text>
+            <View style={styles.dateRow}>
+              <View style={styles.dateInputWrap}>
+                <input
+                  type="date"
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${newStartDate ? colors.primary[500] : dc.inputBorder}`,
+                    backgroundColor: dc.inputBg, color: dc.inputText, fontSize: '15px', outline: 'none', boxSizing: 'border-box', cursor: 'pointer'
+                  }}
+                  value={newStartDate}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
+                />
+              </View>
+              <Text style={[styles.dateSep, { color: dc.textMuted }]}>~</Text>
+              <View style={styles.dateInputWrap}>
+                <input
+                  type="date"
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: '12px', border: `1px solid ${newEndDate ? colors.primary[500] : dc.inputBorder}`,
+                    backgroundColor: dc.inputBg, color: dc.inputText, fontSize: '15px', outline: 'none', boxSizing: 'border-box', cursor: 'pointer'
+                  }}
+                  value={newEndDate}
+                  onChange={(e) => handleEndDateChange(e.target.value)}
+                />
+              </View>
+            </View>
+
+            <Pressable
+              onPress={handleCreateTrip}
+              disabled={createTripMutation.isPending}
+              style={({ pressed }: any) => [
+                styles.gradientButton,
+                { marginTop: 24 },
+                pressed && { opacity: 0.85 },
+                createTripMutation.isPending && { opacity: 0.6 },
+                { cursor: 'pointer' } as any,
+              ]}
+            >
+              <LinearGradient colors={[colors.primary[500], colors.primary[700]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradientButtonInner}>
+                {createTripMutation.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.gradientButtonText}>만들기</Text>}
+              </LinearGradient>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 초대 코드 모달 */}
+      <Modal
+        visible={showJoinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowJoinModal(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
+          onPress={() => setShowJoinModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: dc.panelBg, width: 400, maxWidth: '90%' }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: dc.textPrimary, marginBottom: 20, fontSize: 18, fontWeight: '700' }]}>
+              🔗 초대 코드 입력
+            </Text>
+
+            {joinError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {joinError}</Text>
+              </View>
+            ) : null}
+
+            <Text style={[styles.inputLabel, { color: dc.textSecondary }]}>초대 코드</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: dc.inputBg, borderColor: dc.inputBorder, color: dc.inputText }]}
+              placeholder="초대 코드를 입력하세요"
+              placeholderTextColor={dc.placeholder}
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              autoCapitalize="characters"
+            />
+
+            <Pressable
+              onPress={handleJoinTrip}
+              disabled={joinTripMutation.isPending}
+              style={({ pressed }: any) => [
+                styles.joinButton,
+                { backgroundColor: dc.inputBg, borderColor: colors.primary[500] + '40', marginTop: 24 },
+                pressed && { opacity: 0.85 },
+                joinTripMutation.isPending && { opacity: 0.6 },
+                { cursor: 'pointer' } as any,
+              ]}
+            >
+              {joinTripMutation.isPending ? <ActivityIndicator color={colors.primary[500]} size="small" /> : <Text style={[styles.joinButtonText, { color: colors.primary[500] }]}>참가하기</Text>}
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1129,4 +1181,104 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  fabGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabIcon: {
+    fontSize: 24,
+    color: '#fff',
+  },
+  fabOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1000,
+  },
+  fabMenu: {
+    position: 'absolute',
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    gap: 10,
+  },
+  fabMenuIcon: {
+    fontSize: 20,
+  },
+  fabMenuText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: 400,
+    maxWidth: '90%',
+    padding: 24,
+    borderRadius: 16,
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 20,
+  },
+  modalInput: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    marginBottom: 16,
+  },
+  modalButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 24,
+  },
+  modalButtonGradient: {
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
+

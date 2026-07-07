@@ -5,6 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { wishlistKeys } from './useWishlist';
 
 // ─── 타입 정의 ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export function useCreateSchedule(tripId: string) {
       api.post(`/api/v1/trips/${tripId}/schedules`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+      queryClient.invalidateQueries({ queryKey: wishlistKeys.all });
     },
   });
 }
@@ -113,6 +115,7 @@ export function useUpdateScheduleStatus(tripId: string) {
       queryClient.invalidateQueries({
         queryKey: [...scheduleKeys.all, 'list', tripId],
       });
+      queryClient.invalidateQueries({ queryKey: wishlistKeys.all });
     },
   });
 }
@@ -128,6 +131,7 @@ export function useUpdateSchedule(tripId: string) {
       api.patch(`/api/v1/trips/${tripId}/schedules/${scheduleId}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+      queryClient.invalidateQueries({ queryKey: wishlistKeys.all });
     },
   });
 }
@@ -143,6 +147,7 @@ export function useSwapSchedule(tripId: string) {
       api.patch(`/api/v1/trips/${tripId}/schedules/${scheduleId}/swap`, { targetScheduleId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+      queryClient.invalidateQueries({ queryKey: wishlistKeys.all });
     },
   });
 }
@@ -158,6 +163,21 @@ export function useDeleteSchedule(tripId: string) {
       api.delete(`/api/v1/trips/${tripId}/schedules/${scheduleId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
+      queryClient.invalidateQueries({ queryKey: wishlistKeys.all });
     },
+  });
+}
+
+/**
+ * 특정 사용자가 속한 모든 여행의 특정 날짜 일정 목록 조회 (홈 화면용)
+ */
+export function useMySchedulesByDate(date?: string) {
+  return useQuery({
+    queryKey: [...scheduleKeys.all, 'my', date],
+    queryFn: () =>
+      api.get<Schedule[]>(`/api/v1/schedules/my`, {
+        params: { date },
+      }),
+    enabled: !!date,
   });
 }

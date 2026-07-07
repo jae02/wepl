@@ -37,6 +37,7 @@ interface CreateWishlistItemRequest {
   longitude?: number;
   rating?: number;
   priceLevel?: number;
+  comment?: string;
 }
 
 // ─── 쿼리 키 ────────────────────────────────────────────────────────────────────

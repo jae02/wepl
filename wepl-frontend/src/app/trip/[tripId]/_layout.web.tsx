@@ -6,8 +6,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
 
 const TABS = [
-  { key: 'wishlist', label: '📌 위시리스트' },
   { key: 'timeline', label: '📅 타임라인' },
+  { key: 'wishlist', label: '📌 위시리스트' },
   { key: 'expense', label: '💰 가계부' },
 ] as const;
 

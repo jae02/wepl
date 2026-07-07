@@ -141,6 +141,10 @@ enum PlaceCategory {
   ATTRACTION    // 관광지
   RESTAURANT    // 식당
   CAFE          // 카페
+  CULTURE       // 문화
+  NATURE        // 자연
+  SHOPPING      // 쇼핑
+  OTHER         // 기타
 }
 
 // =============================================================================
@@ -175,11 +179,13 @@ model TimelineSchedule {
   id               String    @id @default(cuid())
   tripId           String    @map("trip_id")
   wishlistPlaceId  String?   @map("wishlist_place_id") // 위시리스트 카드 연결 (nullable: 자유 일정)
-  date             DateTime  @db.Date  // 배치된 날짜
+  date             DateTime  @db.Date  // 시작 날짜
+  endDate          DateTime? @db.Date  @map("end_date") // 종료 날짜 (익일/다일 일정 지원)
   startTime        String?   @map("start_time")  // "09:00" (사용자 수동 입력)
   endTime          String?   @map("end_time")    // "11:30"
   orderIndex       Int       @map("order_index") // 같은 날짜 내 정렬 순서
   memo             String?   @db.Text  // 자유 메모
+  isAccommodation  Boolean   @default(false) @map("is_accommodation") // 숙소 여부
 
   // 카멜레온 카드 - 커스텀 제목/설명 (위시리스트 없이 직접 입력 시)
   customTitle      String?   @map("custom_title")

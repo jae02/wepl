@@ -11,13 +11,19 @@ import {
   IsEnum,
   Min,
   Matches,
+  IsBoolean,
 } from 'class-validator';
 import { ScheduleStatus } from '@prisma/client';
 
 export class CreateScheduleDto {
-  /** 일정 날짜 (필수) - ISO 8601 형식 (예: "2026-01-15") */
+  /** 일정 시작 날짜 (필수) - ISO 8601 형식 (예: "2026-01-15") */
   @IsDateString({}, { message: '올바른 날짜 형식이 아닙니다.' })
   date: string;
+
+  /** 일정 종료 날짜 (선택) - ISO 8601 형식 (예: "2026-01-16") */
+  @IsOptional()
+  @IsDateString({}, { message: '올바른 날짜 형식이 아닙니다.' })
+  endDate?: string;
 
   /** 위시리스트 장소 ID (선택) - 위시리스트 카드 연결 */
   @IsString()
@@ -74,4 +80,9 @@ export class CreateScheduleDto {
   })
   @IsOptional()
   status?: ScheduleStatus = ScheduleStatus.PLANNED;
+
+  /** 숙소 여부 (선택) - 기본값: false */
+  @IsBoolean()
+  @IsOptional()
+  isAccommodation?: boolean = false;
 }

@@ -57,6 +57,7 @@ export default function WishlistScreen() {
   const [newAddress, setNewAddress] = useState('');
   const [newRating, setNewRating] = useState(4);
   const [newPriceLevel, setNewPriceLevel] = useState(2);
+  const [newComment, setNewComment] = useState('');
   const [addError, setAddError] = useState('');
 
   const onRefresh = useCallback(() => {
@@ -81,6 +82,7 @@ export default function WishlistScreen() {
         address: newAddress.trim() || undefined,
         rating: newRating,
         priceLevel: newPriceLevel,
+        comment: newComment.trim() || undefined,
       });
       setShowAddModal(false);
       resetForm();
@@ -96,6 +98,7 @@ export default function WishlistScreen() {
     setNewAddress('');
     setNewRating(4);
     setNewPriceLevel(2);
+    setNewComment('');
     setAddError('');
   };
 
@@ -395,6 +398,26 @@ export default function WishlistScreen() {
                 placeholderTextColor={ds.placeholder}
                 value={newAddress}
                 onChangeText={setNewAddress}
+              />
+
+              {/* 코멘트 */}
+              <Text style={[styles.modalLabel, { color: ds.textSecondary }]}>코멘트 (선택)</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: ds.inputBg,
+                    borderColor: ds.inputBorder,
+                    color: ds.inputText,
+                    minHeight: 80,
+                    textAlignVertical: 'top'
+                  },
+                ]}
+                placeholder="장소에 대한 메모나 코멘트를 입력하세요"
+                placeholderTextColor={ds.placeholder}
+                value={newComment}
+                onChangeText={setNewComment}
+                multiline
               />
 
               {/* 평점 */}

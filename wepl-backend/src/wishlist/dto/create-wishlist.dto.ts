@@ -78,4 +78,9 @@ export class CreateWishlistDto {
   @Min(1, { message: '가격대는 최소 1 이상이어야 합니다.' })
   @Max(4, { message: '가격대는 최대 4까지 가능합니다.' })
   priceLevel?: number;
+
+  /** 초기 코멘트 (선택) */
+  @IsOptional()
+  @IsString()
+  comment?: string;
 }

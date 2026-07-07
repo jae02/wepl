@@ -496,6 +496,8 @@ export default function WishlistWebScreen() {
   const [formLat, setFormLat] = useState<number | undefined>();
   const [formLng, setFormLng] = useState<number | undefined>();
   const [formError, setFormError] = useState('');
+  const [addMode, setAddMode] = useState<'map' | 'text'>('map');
+  const [formComment, setFormComment] = useState('');
   
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
@@ -531,8 +533,9 @@ export default function WishlistWebScreen() {
         address: formAddress.trim() || undefined,
         latitude: formLat,
         longitude: formLng,
+        comment: formComment.trim() || undefined,
       } as any);
-      setShowModal(false); setFormName(''); setFormAddress(''); setFormLat(undefined); setFormLng(undefined); refetch();
+      setShowModal(false); setFormName(''); setFormAddress(''); setFormLat(undefined); setFormLng(undefined); setFormComment(''); refetch();
     } catch (e: any) { setFormError(e?.message || '추가 실패'); }
   };
 
@@ -700,6 +703,7 @@ export default function WishlistWebScreen() {
 
       {/* 추가 모달 */}
       <Modal visible={showModal} transparent animationType="fade">
+        <style>{`.pac-container { z-index: 999999 !important; }`}</style>
         <View style={styles.overlay}>
           <View style={[styles.modal, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>새 장소 추가</Text>
@@ -725,7 +729,22 @@ export default function WishlistWebScreen() {
                 </Pressable>
               ))}
             </View>
-            {isLoaded ? (
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+              <Pressable
+                onPress={() => setAddMode('map')}
+                style={[styles.addModeBtn, addMode === 'map' && styles.addModeBtnActive, { borderColor: theme.border }]}
+              >
+                <Text style={[styles.addModeText, { color: theme.textSecondary }, addMode === 'map' && styles.addModeTextActive]}>지도 검색</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAddMode('text')}
+                style={[styles.addModeBtn, addMode === 'text' && styles.addModeBtnActive, { borderColor: theme.border }]}
+              >
+                <Text style={[styles.addModeText, { color: theme.textSecondary }, addMode === 'text' && styles.addModeTextActive]}>직접 입력</Text>
+              </Pressable>
+            </View>
+
+            {addMode === 'map' && isLoaded ? (
               <Autocomplete
                 onLoad={(autocomplete) => (autocompleteRef.current = autocomplete)}
                 onPlaceChanged={handlePlaceChanged}
@@ -743,11 +762,17 @@ export default function WishlistWebScreen() {
               </Autocomplete>
             ) : (
               <TextInput
-                style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: theme.text, borderColor: theme.border }]}
+                style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: theme.text, borderColor: theme.border, marginBottom: 16 }]}
                 placeholder="주소 (선택)" placeholderTextColor={theme.textTertiary}
                 value={formAddress} onChangeText={setFormAddress}
               />
             )}
+            <TextInput
+              style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: theme.text, borderColor: theme.border, minHeight: 80, textAlignVertical: 'top', marginBottom: 16 }]}
+              placeholder="코멘트를 입력하세요 (선택)" placeholderTextColor={theme.textTertiary}
+              value={formComment} onChangeText={setFormComment}
+              multiline
+            />
             {formError ? <Text style={styles.errorText}>⚠️ {formError}</Text> : null}
             <View style={styles.modalActions}>
               <Pressable onPress={() => setShowModal(false)} style={[styles.cancelBtn, { cursor: 'pointer' } as any]}>
@@ -779,6 +804,26 @@ export default function WishlistWebScreen() {
 /* ─── 메인 스타일 ────────────────────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
+  addModeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    cursor: 'pointer' as any,
+  },
+  addModeBtnActive: {
+    backgroundColor: '#667eea',
+    borderColor: '#667eea',
+  },
+  addModeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  addModeTextActive: {
+    color: '#fff',
+  },
   container: { flex: 1 },
   contentContainer: { paddingBottom: 100 },
   inner: { maxWidth: 1100, width: '100%', alignSelf: 'center', paddingHorizontal: 32, paddingTop: 32 },

@@ -18,8 +18,8 @@ import { useSocket } from '@/hooks/useSocket';
 type TabKey = 'wishlist' | 'timeline' | 'expense';
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
-  { key: 'wishlist', label: '위시리스트', icon: '📌' },
   { key: 'timeline', label: '타임라인', icon: '📅' },
+  { key: 'wishlist', label: '위시리스트', icon: '📌' },
   { key: 'expense', label: '가계부', icon: '💰' },
 ];
 

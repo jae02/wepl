@@ -44,6 +44,14 @@ export class WishlistService {
         longitude: dto.longitude,
         rating: dto.rating,
         priceLevel: dto.priceLevel,
+        comments: dto.comment
+          ? {
+              create: {
+                userId,
+                content: dto.comment,
+              },
+            }
+          : undefined,
       },
       include: {
         createdBy: {

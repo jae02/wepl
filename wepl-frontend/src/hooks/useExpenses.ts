@@ -57,13 +57,21 @@ interface CreateExpenseRequest {
   amount: number;
   currency?: string;
   category: string;
-  splitType?: string;
   splitUserIds?: string[];
 }
 
 interface ToggleSplitPaidRequest {
   expenseId: string;
   splitId: string;
+}
+
+export interface UpdateExpenseRequest {
+  expenseId: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  category?: string;
+  splitUserIds?: string[];
 }
 
 // ─── 쿼리 키 ────────────────────────────────────────────────────────────────────
@@ -182,3 +190,18 @@ export function useDeleteExpense(tripId: string) {
 // 화면에서 사용하는 alias
 export const useAddExpense = useCreateExpense;
 
+/**
+ * 지출 항목 수정
+ */
+export function useUpdateExpense(tripId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ expenseId, ...data }: UpdateExpenseRequest) =>
+      api.patch(`/api/v1/trips/${tripId}/expenses/${expenseId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...expenseKeys.all, 'list', tripId] });
+      queryClient.invalidateQueries({ queryKey: expenseKeys.summary(tripId) });
+      queryClient.invalidateQueries({ queryKey: expenseKeys.stats(tripId) });
+    },
+  });
+}

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { io } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
+import { wishlistKeys } from './useWishlist';
 
 const SOCKET_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -25,6 +26,7 @@ export const useSocket = (tripId: string) => {
       console.log('Received scheduleUpdated event');
       queryClient.invalidateQueries({ queryKey: ['schedules', tripId] });
       queryClient.invalidateQueries({ queryKey: ['schedule-dates', tripId] });
+      queryClient.invalidateQueries({ queryKey: wishlistKeys.all });
     });
 
     socket.on('wishlistUpdated', () => {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 웹 전용 캘린더 컴포넌트
  * PC 브라우저에서만 렌더링되는 월간 그리드 캘린더
  * 여행 일정을 컬러 바로 표시하며 다크/라이트 모드 지원
@@ -22,6 +22,7 @@ interface TripData {
 
 interface CalendarProps {
   trips: TripData[];
+  selectedDate?: Date | null;
   onDateClick?: (date: Date) => void;
   onTripClick?: (tripId: string) => void;
 }
@@ -76,7 +77,7 @@ function isDateInRange(date: Date, start: Date, end: Date): boolean {
 
 // ─── 컴포넌트 ───────────────────────────────────────────────────────────────────
 
-export default function Calendar({ trips, onDateClick, onTripClick }: CalendarProps) {
+export default function Calendar({ trips, selectedDate, onDateClick, onTripClick }: CalendarProps) {
   const colorScheme = useColorScheme() ?? 'dark';
   const theme = getThemeColors(colorScheme);
   const isDark = colorScheme === 'dark';
@@ -221,6 +222,7 @@ export default function Calendar({ trips, onDateClick, onTripClick }: CalendarPr
               const dayOfWeek = dayData.date.getDay();
               const cellIndex = weekIndex * 7 + dayIndex;
               const isHovered = hoveredDay === cellIndex;
+              const isSelected = selectedDate ? isSameDay(dayData.date, selectedDate) : false;
 
               return (
                 <Pressable
@@ -231,7 +233,14 @@ export default function Calendar({ trips, onDateClick, onTripClick }: CalendarPr
                   style={[
                     styles.dayCell,
                     { borderColor: theme.border },
-                    isHovered && {
+                    isSelected && {
+                      backgroundColor: isDark
+                        ? 'rgba(99, 102, 241, 0.2)'
+                        : 'rgba(99, 102, 241, 0.15)',
+                      borderColor: '#667eea',
+                      borderWidth: 2,
+                    },
+                    !isSelected && isHovered && {
                       backgroundColor: isDark
                         ? 'rgba(99, 102, 241, 0.08)'
                         : 'rgba(99, 102, 241, 0.04)',
@@ -270,19 +279,14 @@ export default function Calendar({ trips, onDateClick, onTripClick }: CalendarPr
                       const isFirstDay = isSameDay(dayData.date, tripStart);
 
                       return (
-                        <Pressable
+                        <View
                           key={trip.id + tripIndex}
-                          onPress={(e) => {
-                            e.stopPropagation?.();
-                            onTripClick?.(trip.id);
-                          }}
                           style={[
                             styles.tripBar,
                             {
                               backgroundColor: tripColor,
                               opacity: dayData.isCurrentMonth ? 1 : 0.3,
                             },
-                            { cursor: 'pointer' } as any,
                           ]}
                         >
                           {isFirstDay && (
@@ -290,7 +294,7 @@ export default function Calendar({ trips, onDateClick, onTripClick }: CalendarPr
                               {trip.title}
                             </Text>
                           )}
-                        </Pressable>
+                        </View>
                       );
                     })}
                     {dayTrips.length > 3 && (

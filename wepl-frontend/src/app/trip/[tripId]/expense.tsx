@@ -21,8 +21,11 @@ import {
   useExpenseSummary,
   useExpenseStats,
   useAddExpense,
+  useDeleteExpense,
+  useUpdateExpense,
 } from '@/hooks/useExpenses';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useTripMembers } from '@/hooks/useTrips';
 
 const EXPENSE_CATEGORIES = [
   { key: 'FOOD', label: '식비', icon: '🍽️', color: '#f5576c' },
@@ -54,9 +57,14 @@ export default function ExpenseScreen() {
   const { data: expenses, isLoading, refetch, isRefetching } = useExpenses(tripId);
   const { data: summary } = useExpenseSummary(tripId);
   const { data: stats } = useExpenseStats(tripId);
+  const { data: members } = useTripMembers(tripId);
   const addMutation = useAddExpense(tripId);
+  const deleteMutation = useDeleteExpense(tripId);
+  const updateMutation = useUpdateExpense(tripId);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editExpenseId, setEditExpenseId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // 추가 폼 상태
   const [newDescription, setNewDescription] = useState('');
@@ -94,12 +102,20 @@ export default function ExpenseScreen() {
       return;
     }
     try {
-      await addMutation.mutateAsync({
-        description: newDescription.trim(),
-        amount,
-        category: newCategory,
-        splitType: newSplitType,
-      });
+      if (editExpenseId) {
+        await updateMutation.mutateAsync({
+          expenseId: editExpenseId,
+          description: newDescription.trim(),
+          amount,
+          category: newCategory,
+        });
+      } else {
+        await addMutation.mutateAsync({
+          description: newDescription.trim(),
+          amount,
+          category: newCategory,
+        });
+      }
       setShowAddModal(false);
       resetForm();
       refetch();
@@ -108,11 +124,19 @@ export default function ExpenseScreen() {
     }
   };
 
-  const resetForm = () => {
-    setNewDescription('');
-    setNewAmount('');
-    setNewCategory('FOOD');
-    setNewSplitType('EQUAL');
+  const resetForm = (expense?: any) => {
+    if (expense) {
+      setEditExpenseId(expense.id);
+      setNewDescription(expense.description);
+      setNewAmount(expense.amount?.toString() || '');
+      setNewCategory(expense.category);
+    } else {
+      setEditExpenseId(null);
+      setNewDescription('');
+      setNewAmount('');
+      setNewCategory('FOOD');
+      setNewSplitType('EQUAL');
+    }
     setAddError('');
   };
 
@@ -124,7 +148,7 @@ export default function ExpenseScreen() {
 
   // 전체 금액 합계
   const totalAmount = (expenses ?? []).reduce(
-    (sum: number, e: any) => sum + (e.amount ?? 0),
+    (sum: number, e: any) => sum + Number(e.amount ?? 0),
     0,
   );
 
@@ -281,9 +305,33 @@ export default function ExpenseScreen() {
             </View>
           </View>
 
-          <Text style={[styles.expenseAmount, { color: ds.textPrimary }]}>
-            {formatCurrency(item.amount ?? 0)}
-          </Text>
+          <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
+            <Text style={[styles.expenseAmount, { color: ds.textPrimary }]}>
+              {formatCurrency(item.amount ?? 0)}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
+              <Pressable onPress={() => { resetForm(item); setShowAddModal(true); }}>
+                <Text style={{ fontSize: 16 }}>✏️</Text>
+              </Pressable>
+              {deleteConfirmId === item.id ? (
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <Pressable onPress={() => {
+                    deleteMutation.mutate(item.id);
+                    setDeleteConfirmId(null);
+                  }}>
+                    <Text style={{ fontSize: 14, color: '#ef4444' }}>확인</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setDeleteConfirmId(null)}>
+                    <Text style={{ fontSize: 14, color: ds.textSecondary }}>취소</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable onPress={() => setDeleteConfirmId(item.id)}>
+                  <Text style={{ fontSize: 16 }}>🗑</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
         </View>
       </View>
     );
@@ -368,7 +416,7 @@ export default function ExpenseScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.modalHandle} />
               <Text style={[styles.modalTitle, { color: ds.textPrimary }]}>
-                💰 지출 추가
+                {editExpenseId ? '💰 지출 수정' : '💰 지출 추가'}
               </Text>
 
               {addError ? (

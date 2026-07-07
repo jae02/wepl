@@ -4,12 +4,13 @@
 
 import { Module } from '@nestjs/common';
 import { ScheduleController } from './schedule.controller';
+import { MyScheduleController } from './my-schedule.controller';
 import { ScheduleService } from './schedule.service';
 import { SyncModule } from '../sync/sync.module';
 
 @Module({
   imports: [SyncModule],
-  controllers: [ScheduleController],
+  controllers: [ScheduleController, MyScheduleController],
   providers: [ScheduleService],
   exports: [ScheduleService],
 })

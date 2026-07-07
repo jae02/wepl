@@ -47,15 +47,58 @@ export class ScheduleService {
       }
     }
 
-    const { date, ...rest } = dto;
+    const { date, endDate, ...rest } = dto;
+
+    // 숙소인 경우 날짜 중복 검사 (하루에 하나만 등록)
+    if (dto.isAccommodation) {
+      const startDateObj = new Date(date);
+      const endDateObj = endDate ? new Date(endDate) : new Date(date);
+
+      const overlapping = await this.prisma.timelineSchedule.findFirst({
+        where: {
+          tripId,
+          isAccommodation: true,
+          OR: [
+            {
+              date: { lte: endDateObj },
+              endDate: { gte: startDateObj },
+            },
+            {
+              date: { lte: endDateObj },
+              endDate: null,
+              // date >= startDateObj implies it falls within the range
+              // Since endDate is null, it's just a single day accommodation.
+              // A single day accommodation at `date` overlaps if `startDateObj <= date <= endDateObj`
+            }
+          ]
+        }
+      });
+
+      // 만약 겹치는 숙소가 있다면 예외 발생
+      // (정확한 쿼리를 위해 위 OR 조건을 개선)
+      const existingAccommodations = await this.prisma.timelineSchedule.findMany({
+        where: { tripId, isAccommodation: true }
+      });
+      const hasOverlap = existingAccommodations.some(acc => {
+        const accStart = new Date(acc.date);
+        const accEnd = acc.endDate ? new Date(acc.endDate) : new Date(acc.date);
+        return accStart <= endDateObj && accEnd >= startDateObj;
+      });
+
+      if (hasOverlap) {
+        throw new BadRequestException('해당 날짜에 이미 등록된 숙소가 있습니다. 기존 숙소를 먼저 삭제해 주세요.');
+      }
+    }
 
     const schedule = await this.prisma.$transaction(async (tx) => {
-      // 일정 생성
+      // 일정 생성 (숙소든 아니든 단일 레코드로 생성, endDate 활용)
       const newSchedule = await tx.timelineSchedule.create({
         data: {
           tripId,
           date: new Date(date),
+          endDate: endDate ? new Date(endDate) : undefined,
           ...rest,
+          isAccommodation: dto.isAccommodation || false,
         },
       });
 
@@ -71,7 +114,7 @@ export class ScheduleService {
     });
 
     this.logger.log(
-      `일정 생성 완료: ${schedule.id} (tripId: ${tripId}, date: ${date})`,
+      `일정 생성 완료: ${schedule.id} (tripId: ${tripId}, date: ${date}, isAccommodation: ${dto.isAccommodation})`,
     );
 
     this.syncGateway.server.to(`trip_${tripId}`).emit('scheduleUpdated');
@@ -87,7 +130,13 @@ export class ScheduleService {
     return this.prisma.timelineSchedule.findMany({
       where: {
         tripId,
-        date,
+        OR: [
+          { date },
+          { 
+            date: { lte: date },
+            endDate: { gte: date }
+          }
+        ]
       },
       include: {
         wishlistPlace: {
@@ -97,6 +146,8 @@ export class ScheduleService {
             address: true,
             imageUrl: true,
             category: true,
+            latitude: true,
+            longitude: true,
           },
         },
         _count: {
@@ -107,6 +158,58 @@ export class ScheduleService {
         },
       },
       orderBy: { orderIndex: 'asc' },
+    });
+  }
+
+  /**
+   * 특정 사용자가 속한 모든 여행에서 특정 날짜의 일정 목록 조회
+   * orderIndex 기준 정렬, 위시리스트 장소 정보, 여행 정보 포함
+   */
+  async getMySchedulesByDate(userId: string, date: Date) {
+    return this.prisma.timelineSchedule.findMany({
+      where: {
+        OR: [
+          { date },
+          { 
+            date: { lte: date },
+            endDate: { gte: date }
+          }
+        ],
+        trip: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+      include: {
+        trip: {
+          select: {
+            id: true,
+            title: true,
+            theme: true,
+          },
+        },
+        wishlistPlace: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            imageUrl: true,
+            category: true,
+            latitude: true,
+            longitude: true,
+          },
+        },
+        _count: {
+          select: { checklistItems: true, diaryEntries: true },
+        },
+      },
+      orderBy: [
+        { tripId: 'asc' },
+        { orderIndex: 'asc' },
+      ],
     });
   }
 
@@ -164,9 +267,10 @@ export class ScheduleService {
     }
 
     // PartialType에서 오는 필드를 안전하게 매핑
-    const { date, ...rest } = dto as any;
+    const { date, endDate, ...rest } = dto as any;
     const data: Record<string, any> = { ...rest };
     if (date !== undefined) data.date = new Date(date);
+    if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
 
     const updated = await this.prisma.timelineSchedule.update({
       where: { id },
