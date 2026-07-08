@@ -20,9 +20,10 @@ import {
   useExpenses,
   useExpenseSummary,
   useExpenseStats,
-  useAddExpense,
-  useDeleteExpense,
+  useCreateExpense,
   useUpdateExpense,
+  useDeleteExpense,
+  useToggleSplitPaid,
 } from '@/hooks/useExpenses';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useTripMembers } from '@/hooks/useTrips';
@@ -58,9 +59,10 @@ export default function ExpenseScreen() {
   const { data: summary } = useExpenseSummary(tripId);
   const { data: stats } = useExpenseStats(tripId);
   const { data: members } = useTripMembers(tripId);
-  const addMutation = useAddExpense(tripId);
+  const createMutation = useCreateExpense(tripId);
   const deleteMutation = useDeleteExpense(tripId);
   const updateMutation = useUpdateExpense(tripId);
+  const toggleMutation = useToggleSplitPaid(tripId);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null);
@@ -70,7 +72,9 @@ export default function ExpenseScreen() {
   const [newDescription, setNewDescription] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [newCategory, setNewCategory] = useState('FOOD');
+  const [newCurrency, setNewCurrency] = useState('KRW');
   const [newSplitType, setNewSplitType] = useState('EQUAL');
+  const [newSplitUserIds, setNewSplitUserIds] = useState<string[]>([]);
   const [addError, setAddError] = useState('');
 
   const onRefresh = useCallback(() => {
@@ -107,13 +111,17 @@ export default function ExpenseScreen() {
           expenseId: editExpenseId,
           description: newDescription.trim(),
           amount,
+          currency: newCurrency,
           category: newCategory,
+          splitUserIds: newSplitUserIds.length > 0 ? newSplitUserIds : undefined,
         });
       } else {
-        await addMutation.mutateAsync({
+        await createMutation.mutateAsync({
           description: newDescription.trim(),
           amount,
+          currency: newCurrency,
           category: newCategory,
+          splitUserIds: newSplitUserIds.length > 0 ? newSplitUserIds : undefined,
         });
       }
       setShowAddModal(false);
@@ -130,12 +138,17 @@ export default function ExpenseScreen() {
       setNewDescription(expense.description);
       setNewAmount(expense.amount?.toString() || '');
       setNewCategory(expense.category);
+      setNewCurrency(expense.currency || 'KRW');
+      setNewSplitType('EQUAL');
+      setNewSplitUserIds(expense.splitWith?.map((s: any) => s.userId) || []);
     } else {
       setEditExpenseId(null);
       setNewDescription('');
       setNewAmount('');
       setNewCategory('FOOD');
+      setNewCurrency('KRW');
       setNewSplitType('EQUAL');
+      setNewSplitUserIds([]);
     }
     setAddError('');
   };
@@ -307,7 +320,7 @@ export default function ExpenseScreen() {
 
           <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
             <Text style={[styles.expenseAmount, { color: ds.textPrimary }]}>
-              {formatCurrency(item.amount ?? 0)}
+              {item.currency === 'KRW' ? formatCurrency(item.amount ?? 0) : `${item.amount} ${item.currency}`}
             </Text>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
               <Pressable onPress={() => { resetForm(item); setShowAddModal(true); }}>
@@ -333,6 +346,39 @@ export default function ExpenseScreen() {
             </View>
           </View>
         </View>
+
+        {/* 하단 정산 멤버 목록 */}
+        {item.splitWith && item.splitWith.length > 0 && (
+          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(128,128,128,0.1)' }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: ds.textSecondary, marginBottom: 8 }}>
+              정산 현황
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {item.splitWith.map((split: any) => (
+                <Pressable
+                  key={split.id}
+                  onPress={() => {
+                    toggleMutation.mutate({ expenseId: item.id, splitId: split.id });
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: split.isPaid ? '#10b98120' : ds.inputBg,
+                    borderWidth: 1,
+                    borderColor: split.isPaid ? '#10b981' : ds.inputBorder,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: split.isPaid ? '#10b981' : ds.textSecondary, fontWeight: '600' }}>
+                    {split.user?.nickname} {split.isPaid ? '완료' : '미완료'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
       </View>
     );
   };
@@ -446,7 +492,7 @@ export default function ExpenseScreen() {
 
               {/* 금액 */}
               <Text style={[styles.modalLabel, { color: ds.textSecondary }]}>
-                금액 (원) *
+                금액 *
               </Text>
               <TextInput
                 style={[
@@ -504,6 +550,83 @@ export default function ExpenseScreen() {
                 ))}
               </ScrollView>
 
+              {/* 통화 */}
+              <Text style={[styles.modalLabel, { color: ds.textSecondary }]}>
+                통화
+              </Text>
+              <View style={styles.splitPicker}>
+                {['KRW', 'USD', 'EUR', 'JPY'].map((cur) => (
+                  <Pressable
+                    key={cur}
+                    onPress={() => setNewCurrency(cur)}
+                    style={[
+                      styles.splitChip,
+                      {
+                        backgroundColor:
+                          newCurrency === cur ? '#667eea20' : ds.inputBg,
+                        borderColor:
+                          newCurrency === cur ? '#667eea' : ds.inputBorder,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.splitChipText,
+                        {
+                          color:
+                            newCurrency === cur ? '#667eea' : ds.textSecondary,
+                        },
+                      ]}
+                    >
+                      {cur}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* 함께한 멤버 (정산 대상) */}
+              <Text style={[styles.modalLabel, { color: ds.textSecondary }]}>
+                정산할 멤버 선택
+              </Text>
+              <View style={styles.splitPicker}>
+                {members?.map((m: any) => {
+                  const isSelected = newSplitUserIds.includes(m.userId);
+                  return (
+                    <Pressable
+                      key={m.userId}
+                      onPress={() => {
+                        if (isSelected) {
+                          setNewSplitUserIds(prev => prev.filter(id => id !== m.userId));
+                        } else {
+                          setNewSplitUserIds(prev => [...prev, m.userId]);
+                        }
+                      }}
+                      style={[
+                        styles.splitChip,
+                        {
+                          backgroundColor:
+                            isSelected ? '#10b98120' : ds.inputBg,
+                          borderColor:
+                            isSelected ? '#10b981' : ds.inputBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.splitChipText,
+                          {
+                            color:
+                              isSelected ? '#10b981' : ds.textSecondary,
+                          },
+                        ]}
+                      >
+                        {m.user?.nickname}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
               {/* 분배 방식 */}
               <Text style={[styles.modalLabel, { color: ds.textSecondary }]}>
                 분배 방식
@@ -541,11 +664,11 @@ export default function ExpenseScreen() {
               {/* 추가 버튼 */}
               <Pressable
                 onPress={handleAdd}
-                disabled={addMutation.isPending}
+                disabled={createMutation.isPending}
                 style={({ pressed }) => [
                   styles.modalButton,
                   pressed && { opacity: 0.85 },
-                  addMutation.isPending && { opacity: 0.6 },
+                  createMutation.isPending && { opacity: 0.6 },
                 ]}
               >
                 <LinearGradient
@@ -554,7 +677,7 @@ export default function ExpenseScreen() {
                   end={{ x: 1, y: 0 }}
                   style={styles.modalButtonGradient}
                 >
-                  {addMutation.isPending ? (
+                  {createMutation.isPending ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
                     <Text style={styles.modalButtonText}>추가하기</Text>

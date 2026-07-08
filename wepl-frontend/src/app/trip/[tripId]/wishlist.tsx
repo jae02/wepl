@@ -11,13 +11,18 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
+  Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useWishlist, useAddWishlistItem } from '@/hooks/useWishlist';
+import { useWishlist, useAddWishlistItem, useDeleteWishlistItem, useToggleLike, useRecommendPlaces } from '@/hooks/useWishlist';
+import { useLocation } from '@/hooks/useLocation';
 import { useResponsive } from '@/hooks/useResponsive';
+import MapPlacePickerModal from '@/components/map/MapPlacePickerModal';
+import WishlistMapView from '@/components/map/WishlistMapView';
 
 const CATEGORIES = [
   { key: 'ALL', label: '전체', icon: '📋' },
@@ -26,6 +31,10 @@ const CATEGORIES = [
   { key: 'ATTRACTION', label: '관광지', icon: '🏛️' },
   { key: 'ACCOMMODATION', label: '숙소', icon: '🏨' },
   { key: 'ACTIVITY', label: '액티비티', icon: '🎯' },
+  { key: 'CULTURE', label: '문화', icon: '🎭' },
+  { key: 'NATURE', label: '자연', icon: '🌳' },
+  { key: 'SHOPPING', label: '쇼핑', icon: '🛍️' },
+  { key: 'OTHER', label: '기타', icon: '✨' },
 ];
 
 const PRICE_LABELS = ['₩', '₩₩', '₩₩₩', '₩₩₩₩'];
@@ -48,13 +57,22 @@ export default function WishlistScreen() {
   const { data: wishlistItems, isLoading, refetch, isRefetching } = useWishlist(tripId);
   const addMutation = useAddWishlistItem(tripId);
 
+  const deleteMutation = useDeleteWishlistItem(tripId);
+  const likeMutation = useToggleLike(tripId);
+  const { latitude: userLat, longitude: userLng } = useLocation();
+  const { data: recommendedPlaces } = useRecommendPlaces(tripId, userLat ?? undefined, userLng ?? undefined, 1500);
+
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isMapView, setIsMapView] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // 추가 폼 상태
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('RESTAURANT');
   const [newAddress, setNewAddress] = useState('');
+  const [newLatitude, setNewLatitude] = useState<number | null>(null);
+  const [newLongitude, setNewLongitude] = useState<number | null>(null);
   const [newRating, setNewRating] = useState(4);
   const [newPriceLevel, setNewPriceLevel] = useState(2);
   const [newComment, setNewComment] = useState('');
@@ -80,6 +98,8 @@ export default function WishlistScreen() {
         name: newName.trim(),
         category: newCategory,
         address: newAddress.trim() || undefined,
+        latitude: newLatitude ?? undefined,
+        longitude: newLongitude ?? undefined,
         rating: newRating,
         priceLevel: newPriceLevel,
         comment: newComment.trim() || undefined,
@@ -96,10 +116,25 @@ export default function WishlistScreen() {
     setNewName('');
     setNewCategory('RESTAURANT');
     setNewAddress('');
+    setNewLatitude(null);
+    setNewLongitude(null);
     setNewRating(4);
     setNewPriceLevel(2);
     setNewComment('');
     setAddError('');
+  };
+
+  const handleDelete = (itemId: string, name: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`"${name}" 장소를 삭제하시겠습니까?`)) {
+        deleteMutation.mutateAsync(itemId);
+      }
+    } else {
+      Alert.alert('삭제 확인', `"${name}" 장소를 삭제하시겠습니까?`, [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => deleteMutation.mutateAsync(itemId) }
+      ]);
+    }
   };
 
   const ds = {
@@ -123,6 +158,10 @@ export default function WishlistScreen() {
     ATTRACTION: '#667eea',
     ACCOMMODATION: '#4facfe',
     ACTIVITY: '#fa709a',
+    CULTURE: '#764ba2',
+    NATURE: '#00f2fe',
+    SHOPPING: '#fcb69f',
+    OTHER: '#a0a0a0',
   };
 
   const renderItem = ({ item }: { item: any }) => {
@@ -130,7 +169,8 @@ export default function WishlistScreen() {
     const catColor = categoryColors[item.category] ?? '#667eea';
 
     return (
-      <View
+      <Pressable
+        onLongPress={() => handleDelete(item.id, item.name)}
         style={[
           styles.wishlistCard,
           { backgroundColor: ds.cardBg, borderColor: ds.cardBorder },
@@ -170,12 +210,24 @@ export default function WishlistScreen() {
         ) : null}
 
         <View style={styles.cardFooter}>
-          <Text style={[styles.cardStars, { color: '#fbbf24' }]}>
-            {renderStars(item.rating ?? 0)}
-          </Text>
-          <Text style={[styles.cardPrice, { color: ds.textSecondary }]}>
-            {PRICE_LABELS[(item.priceLevel ?? 1) - 1] ?? '₩'}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[styles.cardStars, { color: '#fbbf24' }]}>
+              {renderStars(item.rating ?? 0)}
+            </Text>
+            <Text style={[styles.cardPrice, { color: ds.textSecondary }]}>
+              {PRICE_LABELS[(item.priceLevel ?? 1) - 1] ?? '₩'}
+            </Text>
+          </View>
+          <Pressable onPress={() => likeMutation.mutateAsync(item.id)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: ds.chipBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+            <Text style={{ fontSize: 16 }}>
+              {item.likes && item.likes.length > 0 ? '❤️' : '🤍'}
+            </Text>
+            {item.likes && item.likes.length > 0 && (
+              <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#f5576c', marginLeft: 4 }}>
+                {item.likes.length}
+              </Text>
+            )}
+          </Pressable>
         </View>
 
         {item.createdBy?.nickname && (
@@ -190,7 +242,7 @@ export default function WishlistScreen() {
             </Text>
           </View>
         )}
-      </View>
+      </Pressable>
     );
   };
 
@@ -211,46 +263,76 @@ export default function WishlistScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: ds.bg }, isDesktop && styles.desktopPageContainer]}>
-      {/* 카테고리 필터 */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.filterContainer, isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const, paddingHorizontal: 32 }]}
-        style={styles.filterScroll}
-      >
-        {CATEGORIES.map((cat) => {
-          const isActive = selectedCategory === cat.key;
-          return (
-            <Pressable
-              key={cat.key}
-              onPress={() => setSelectedCategory(cat.key)}
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor: isActive ? '#667eea' : ds.chipBg,
-                  borderColor: isActive ? '#667eea' : ds.chipBorder,
-                },
-                isWeb && ({ cursor: 'pointer' } as any),
-              ]}
-            >
-              <Text
+      {/* 뷰 토글 및 카테고리 필터 */}
+      <View style={styles.topBar}>
+        <View style={styles.viewToggle}>
+          <Pressable onPress={() => setIsMapView(false)} style={[styles.toggleBtn, !isMapView && styles.toggleBtnActive]}>
+            <Text style={[styles.toggleBtnText, !isMapView && styles.toggleBtnTextActive]}>📋 목록</Text>
+          </Pressable>
+          <Pressable onPress={() => setIsMapView(true)} style={[styles.toggleBtn, isMapView && styles.toggleBtnActive]}>
+            <Text style={[styles.toggleBtnText, isMapView && styles.toggleBtnTextActive]}>🗺️ 지도</Text>
+          </Pressable>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.filterContainer, isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const, paddingHorizontal: 32 }]}
+          style={styles.filterScroll}
+        >
+          {CATEGORIES.map((cat) => {
+            const isActive = selectedCategory === cat.key;
+            return (
+              <Pressable
+                key={cat.key}
+                onPress={() => setSelectedCategory(cat.key)}
                 style={[
-                  styles.filterChipText,
-                  { color: isActive ? '#ffffff' : ds.textSecondary },
+                  styles.filterChip,
+                  {
+                    backgroundColor: isActive ? '#667eea' : ds.chipBg,
+                    borderColor: isActive ? '#667eea' : ds.chipBorder,
+                  },
+                  isWeb && ({ cursor: 'pointer' } as any),
                 ]}
               >
-                {cat.icon} {cat.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    { color: isActive ? '#ffffff' : ds.textSecondary },
+                  ]}
+                >
+                  {cat.icon} {cat.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-      {/* 위시리스트 목록 */}
+      {/* 위시리스트 목록 or 지도 */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#667eea" />
         </View>
+      ) : isMapView ? (
+        <WishlistMapView 
+          items={filteredItems.map((w: any) => ({
+            id: w.id,
+            name: w.name,
+            latitude: w.latitude ?? null,
+            longitude: w.longitude ?? null,
+            address: w.address ?? null,
+            category: w.category,
+          }))} 
+          recommendedPlaces={(recommendedPlaces ?? []).map((w: any) => ({
+            id: w.id,
+            name: w.name,
+            latitude: w.latitude ?? null,
+            longitude: w.longitude ?? null,
+            address: w.address ?? null,
+            category: w.category,
+          }))} 
+          onCalloutPress={(item) => {/* 향후 상세 모달 지원 예정 */}} 
+        />
       ) : (
         <FlatList
           data={filteredItems}
@@ -300,10 +382,11 @@ export default function WishlistScreen() {
         animationType="slide"
         onRequestClose={() => setShowAddModal(false)}
       >
-        <Pressable
-          style={[styles.modalOverlay, isDesktop && styles.desktopModalOverlay]}
-          onPress={() => setShowAddModal(false)}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <Pressable
+            style={[styles.modalOverlay, isDesktop && styles.desktopModalOverlay]}
+            onPress={() => setShowAddModal(false)}
+          >
           <Pressable
             style={[styles.modalContent, { backgroundColor: ds.modalBg }, isDesktop && styles.desktopModalContent]}
             onPress={(e) => e.stopPropagation()}
@@ -383,8 +466,13 @@ export default function WishlistScreen() {
                 ))}
               </ScrollView>
 
-              {/* 주소 */}
-              <Text style={[styles.modalLabel, { color: ds.textSecondary }]}>주소</Text>
+              {/* 주소 및 지도 */}
+              <View style={styles.addressHeaderRow}>
+                <Text style={[styles.modalLabel, { color: ds.textSecondary, marginBottom: 0 }]}>주소 및 위치</Text>
+                <Pressable onPress={() => setShowMapPicker(true)} style={styles.mapPickBtn}>
+                  <Text style={styles.mapPickBtnText}>🗺️ 지도에서 선택</Text>
+                </Pressable>
+              </View>
               <TextInput
                 style={[
                   styles.modalInput,
@@ -501,7 +589,18 @@ export default function WishlistScreen() {
             </ScrollView>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
+
+      <MapPlacePickerModal 
+        visible={showMapPicker} 
+        onClose={() => setShowMapPicker(false)} 
+        onSelect={(res) => {
+          if (res.address) setNewAddress(res.address);
+          setNewLatitude(res.latitude);
+          setNewLongitude(res.longitude);
+        }} 
+      />
     </View>
   );
 }
@@ -790,5 +889,56 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     maxWidth: 520,
     width: '90%' as any,
+  },
+  topBar: {
+    paddingTop: 10,
+    backgroundColor: 'transparent',
+  },
+  viewToggle: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 10,
+    backgroundColor: 'rgba(128,128,128,0.1)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#888',
+  },
+  toggleBtnTextActive: {
+    color: '#1a1a2e',
+  },
+  addressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  mapPickBtn: {
+    backgroundColor: '#667eea20',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  mapPickBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#667eea',
   },
 });

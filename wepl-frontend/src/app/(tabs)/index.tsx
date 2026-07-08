@@ -20,7 +20,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useTrips, useCreateTrip, useJoinTrip, useDeleteTrip } from '@/hooks/useTrips';
+import { useMySchedulesByDate } from '@/hooks/useSchedules';
 import { useResponsive } from '@/hooks/useResponsive';
+import Calendar from '@/components/web/Calendar';
 
 // 여행 테마 → 그라데이션 색상 매핑
 const THEME_GRADIENTS: Record<string, [string, string]> = {
@@ -74,6 +76,11 @@ export default function HomeScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showFABMenu, setShowFABMenu] = useState(false);
+
+  // 캘린더 상태
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const selectedDateStr = selectedDate ? new Date(selectedDate.getTime() - selectedDate.getTimezoneOffset() * 60000).toISOString().split('T')[0] : undefined;
+  const { data: daySchedules, isLoading: isLoadingSchedules } = useMySchedulesByDate(selectedDateStr);
 
   // 생성 폼
   const [newTitle, setNewTitle] = useState('');
@@ -247,6 +254,61 @@ export default function HomeScreen() {
     );
   };
 
+  // 헤더 컨텐츠 (캘린더 + 일정)
+  const renderHeaderContent = () => (
+    <View style={styles.calendarSection}>
+      <Text style={[styles.sectionTitle, { color: dynamicStyles.textPrimary }]}>
+        📅 캘린더 개요
+      </Text>
+      <View style={{ marginBottom: 16 }}>
+        <Calendar
+          trips={trips ?? []}
+          selectedDate={selectedDate}
+          onDateClick={setSelectedDate}
+        />
+      </View>
+      
+      {selectedDate && (
+        <View style={[styles.schedulePanel, { backgroundColor: dynamicStyles.cardBg, borderColor: dynamicStyles.cardBorder }]}>
+          <Text style={[styles.scheduleTitle, { color: dynamicStyles.textPrimary }]}>
+            {selectedDate.toLocaleDateString('ko-KR')} 일정
+          </Text>
+          {isLoadingSchedules ? (
+            <ActivityIndicator size="small" color="#667eea" style={{ marginTop: 10 }} />
+          ) : !daySchedules || daySchedules.length === 0 ? (
+            <Text style={[styles.emptySchedule, { color: dynamicStyles.textSecondary }]}>
+              선택한 날짜에 일정이 없습니다.
+            </Text>
+          ) : (
+            <View style={styles.scheduleList}>
+              {daySchedules.map((schedule: any) => (
+                <Pressable
+                  key={schedule.id}
+                  onPress={() => router.push(`/trip/${schedule.tripId}/timeline`)}
+                  style={[styles.scheduleCard, { backgroundColor: dynamicStyles.inputBg }]}
+                >
+                  <Text style={[styles.scheduleTime, { color: '#667eea' }]}>
+                    {schedule.startTime || '시간 미정'} {schedule.endTime ? `- ${schedule.endTime}` : ''}
+                  </Text>
+                  <Text style={[styles.scheduleTitleText, { color: dynamicStyles.textPrimary }]}>
+                    {schedule.wishlistPlace?.name ?? schedule.customTitle ?? '제목 없음'}
+                  </Text>
+                  <Text style={[styles.scheduleTripText, { color: dynamicStyles.textSecondary }]}>
+                    {schedule.trip.title}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      <Text style={[styles.sectionTitle, { color: dynamicStyles.textPrimary, marginTop: 24 }]}>
+        📋 내 여행 목록
+      </Text>
+    </View>
+  );
+
   // 빈 상태
   const renderEmpty = () => {
     if (isLoading) return null;
@@ -308,6 +370,7 @@ export default function HomeScreen() {
             { paddingBottom: 100 + insets.bottom },
             isDesktop && { maxWidth: contentMaxWidth, width: '100%' as any, alignSelf: 'center' as const },
           ]}
+          ListHeaderComponent={renderHeaderContent}
           ListEmptyComponent={renderEmpty}
           refreshControl={
             <RefreshControl
@@ -639,6 +702,50 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 8,
+  },
+  calendarSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  schedulePanel: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  scheduleTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  emptySchedule: {
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  scheduleList: {
+    gap: 8,
+  },
+  scheduleCard: {
+    padding: 12,
+    borderRadius: 8,
+  },
+  scheduleTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  scheduleTitleText: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  scheduleTripText: {
+    fontSize: 12,
   },
   tripCard: {
     borderRadius: 16,

@@ -11,7 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors, getThemeColors } from '@/theme';
-import { useWishlist, useCreateWishlistItem, useDeleteWishlistItem, useRecommendPlaces } from '@/hooks/useWishlist';
+import { useWishlist, useCreateWishlistItem, useDeleteWishlistItem, useRecommendPlaces, useToggleLike } from '@/hooks/useWishlist';
 import { useComments, useCreateComment, useDeleteComment } from '@/hooks/useComments';
 import { useAuthStore } from '@/stores/auth.store';
 import { useJsApiLoader, GoogleMap, Marker, Autocomplete } from '@react-google-maps/api';
@@ -38,13 +38,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   CAFE: '#a18cd1', RELAXATION: '#a18cd1', SHOPPING: '#fcb69f',
   ACCOMMODATION: '#4facfe', OTHER: '#6b7280',
 };
-
-const DETAIL_TABS = [
-  { key: 'info', label: '📝 정보' },
-  { key: 'comments', label: '💬 코멘트' },
-] as const;
-
-type DetailTab = typeof DETAIL_TABS[number]['key'];
 
 /* ─── 유틸 ───────────────────────────────────────────────────────────────────── */
 
@@ -180,7 +173,6 @@ function DetailModal({
   theme: any;
 }) {
   const currentUser = useAuthStore((s) => s.user);
-  const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [commentText, setCommentText] = useState('');
   const [replyTarget, setReplyTarget] = useState<{ parentId: string; nickname: string } | null>(null);
 
@@ -189,6 +181,18 @@ function DetailModal({
   const { data: recommendData, isLoading: recommendLoading } = useRecommendPlaces(tripId, item?.latitude, item?.longitude);
   const createCommentMutation = useCreateComment(tripId, wishlistId);
   const deleteCommentMutation = useDeleteComment(tripId, wishlistId);
+  const toggleLikeMutation = useToggleLike(tripId);
+
+  const isLiked = useMemo(() => {
+    return item?.likes && item.likes.length > 0;
+  }, [item?.likes]);
+
+  const handleToggleLike = useCallback(async () => {
+    if (!item) return;
+    try {
+      await toggleLikeMutation.mutateAsync(item.id);
+    } catch {}
+  }, [item, toggleLikeMutation]);
 
   const comments = useMemo(() => commentsData ?? [], [commentsData]);
   const totalComments = useMemo(() => {
@@ -224,7 +228,6 @@ function DetailModal({
 
   const handleReply = useCallback((parentId: string, nickname: string) => {
     setReplyTarget({ parentId, nickname });
-    setActiveTab('comments');
   }, []);
 
   if (!item) return null;
@@ -261,39 +264,9 @@ function DetailModal({
             </LinearGradient>
           </View>
 
-          {/* ── 탭 바 ── */}
-          <View style={[dStyles.tabBar, { borderBottomColor: theme.border }]}>
-            {DETAIL_TABS.map((tab) => {
-              const isActive = activeTab === tab.key;
-              const label = tab.key === 'comments' ? `${tab.label} (${totalComments})` : tab.label;
-              return (
-                <Pressable
-                  key={tab.key}
-                  onPress={() => setActiveTab(tab.key)}
-                  style={[
-                    dStyles.tabItem,
-                    isActive && { borderBottomColor: colors.primary[500], borderBottomWidth: 2 },
-                    { cursor: 'pointer' } as any,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      dStyles.tabText,
-                      { color: isActive ? colors.primary[500] : theme.textSecondary },
-                      isActive && { fontWeight: '700' },
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* ── 탭 컨텐츠 ── */}
+          {/* ── 컨텐츠 (정보 + 코멘트 통합) ── */}
           <ScrollView style={dStyles.tabContent} contentContainerStyle={{ paddingBottom: 16 }}>
-            {activeTab === 'info' ? (
-              <View style={dStyles.infoSection}>
+            <View style={dStyles.infoSection}>
                 {/* 주소 */}
                 {item.address ? (
                   <View style={dStyles.infoRow}>
@@ -328,38 +301,56 @@ function DetailModal({
                   </View>
                 ) : null}
 
-                {/* 투표 & 코멘트 */}
+                {/* 좋아요 & 코멘트 */}
                 <View style={dStyles.infoRow}>
-                  <Text style={dStyles.infoIcon}>👍</Text>
+                  <Pressable
+                    onPress={handleToggleLike}
+                    style={{ cursor: 'pointer', opacity: toggleLikeMutation.isPending ? 0.5 : 1 } as any}
+                  >
+                    <Text style={[dStyles.infoIcon, { color: isLiked ? '#ef4444' : theme.textSecondary }]}>
+                      {isLiked ? '❤️' : '🤍'}
+                    </Text>
+                  </Pressable>
                   <Text style={[dStyles.infoText, { color: theme.text }]}>
-                    투표 {item.voteCount ?? 0}개 · 코멘트 {item._count?.comments ?? 0}개
+                    좋아요 {item._count?.likes ?? 0}개 · 코멘트 {item._count?.comments ?? 0}개
                   </Text>
                 </View>
 
-                {/* 설명 */}
-                {item.description ? (
-                  <View style={[dStyles.descriptionBox, {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  }]}>
-                    <Text style={[dStyles.descriptionText, { color: theme.text }]}>
-                      {item.description}
-                    </Text>
+                {/* ── 코멘트 섹션 (설명창 대체) ── */}
+                <View style={{ marginTop: 24, marginBottom: 8 }}>
+                  <Text style={[dStyles.infoText, { marginBottom: 12, fontSize: 16, fontWeight: '700', color: theme.text }]}>💬 코멘트 ({totalComments})</Text>
+                  <View style={dStyles.commentsSection}>
+                    {commentsLoading ? (
+                      <ActivityIndicator size="small" color={colors.primary[500]} style={{ marginTop: 16 }} />
+                    ) : comments.length === 0 ? (
+                      <View style={[dStyles.emptyComments, { paddingVertical: 24 }]}>
+                        <Text style={[dStyles.emptyCommentsText, { color: theme.textSecondary, fontSize: 14 }]}>
+                          아직 코멘트가 없습니다.
+                        </Text>
+                        <Text style={[dStyles.emptyCommentsSubtext, { color: theme.textTertiary, fontSize: 12 }]}>
+                          첫 코멘트를 남겨보세요!
+                        </Text>
+                      </View>
+                    ) : (
+                      comments.map((comment: any) => (
+                        <CommentItem
+                          key={comment.id}
+                          comment={comment}
+                          currentUserId={currentUser?.id}
+                          isDark={isDark}
+                          theme={theme}
+                          depth={0}
+                          onReply={handleReply}
+                          onDelete={handleDeleteComment}
+                        />
+                      ))
+                    )}
                   </View>
-                ) : (
-                  <View style={[dStyles.descriptionBox, {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
-                    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  }]}>
-                    <Text style={[dStyles.descriptionPlaceholder, { color: theme.textTertiary }]}>
-                      아직 설명이 없습니다
-                    </Text>
-                  </View>
-                )}
+                </View>
 
                 {/* 주변 추천 장소 */}
                 <View style={{ marginTop: 24 }}>
-                  <Text style={[dStyles.infoText, { marginBottom: 12, fontSize: 16, fontWeight: '700', color: theme.text }]}>📍 주변 추천 장소</Text>
+                  <Text style={[dStyles.infoText, { marginBottom: 12, fontSize: 16, fontWeight: '700', color: theme.text }]}>📍 주변 위시리스트 장소</Text>
                   {recommendLoading ? (
                     <ActivityIndicator size="small" color={colors.primary[500]} />
                   ) : recommendData?.length ? (
@@ -374,50 +365,18 @@ function DetailModal({
                           <Text style={{ fontSize: 11, color: theme.textTertiary }}>
                             거리: {Math.round(place.distance || 0)}m
                           </Text>
-                        </View>
+                          </View>
                       ))}
                     </ScrollView>
                   ) : (
-                    <Text style={{ fontSize: 13, color: theme.textTertiary }}>주변 추천 장소가 없습니다.</Text>
+                    <Text style={{ fontSize: 13, color: theme.textTertiary }}>주변에 등록된 위시리스트 장소가 없습니다.</Text>
                   )}
                 </View>
-              </View>
-            ) : (
-              /* ── 코멘트 탭 ── */
-              <View style={dStyles.commentsSection}>
-                {commentsLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary[500]} style={{ marginTop: 32 }} />
-                ) : comments.length === 0 ? (
-                  <View style={dStyles.emptyComments}>
-                    <Text style={{ fontSize: 36, marginBottom: 12 }}>💬</Text>
-                    <Text style={[dStyles.emptyCommentsText, { color: theme.textSecondary }]}>
-                      아직 코멘트가 없습니다
-                    </Text>
-                    <Text style={[dStyles.emptyCommentsSubtext, { color: theme.textTertiary }]}>
-                      첫 코멘트를 남겨보세요!
-                    </Text>
-                  </View>
-                ) : (
-                  comments.map((comment: any) => (
-                    <CommentItem
-                      key={comment.id}
-                      comment={comment}
-                      currentUserId={currentUser?.id}
-                      isDark={isDark}
-                      theme={theme}
-                      depth={0}
-                      onReply={handleReply}
-                      onDelete={handleDeleteComment}
-                    />
-                  ))
-                )}
-              </View>
-            )}
+            </View>
           </ScrollView>
 
-          {/* ── 코멘트 입력 (코멘트 탭일 때만) ── */}
-          {activeTab === 'comments' && (
-            <View style={[dStyles.commentInputArea, { borderTopColor: theme.border }]}>
+          {/* ── 코멘트 입력 ── */}
+          <View style={[dStyles.commentInputArea, { borderTopColor: theme.border }]}>
               {replyTarget && (
                 <View style={[dStyles.replyIndicator, { backgroundColor: colors.primary[500] + '15' }]}>
                   <Text style={[dStyles.replyIndicatorText, { color: colors.primary[500] }]}>
@@ -462,7 +421,6 @@ function DetailModal({
                 </Pressable>
               </View>
             </View>
-          )}
         </View>
       </View>
     </Modal>
@@ -486,11 +444,19 @@ export default function WishlistWebScreen() {
   const { data: wishlist, isLoading, refetch } = useWishlist(tripId ?? '');
   const createMutation = useCreateWishlistItem(tripId ?? '');
   const deleteMutation = useDeleteWishlistItem(tripId ?? '');
+  const toggleLikeMutation = useToggleLike(tripId ?? '');
 
   const [filter, setFilter] = useState('ALL');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [showModal, setShowModal] = useState(false);
   const [formName, setFormName] = useState('');
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailItem, setDetailItem] = useState<any>(null);
+
+  const selectedDetailItem = useMemo(() => {
+    if (!detailItem?.id || !wishlist) return detailItem;
+    return wishlist.find((w: any) => w.id === detailItem.id) || detailItem;
+  }, [wishlist, detailItem]);
   const [formCategory, setFormCategory] = useState('RESTAURANT');
   const [formAddress, setFormAddress] = useState('');
   const [formLat, setFormLat] = useState<number | undefined>();
@@ -516,12 +482,18 @@ export default function WishlistWebScreen() {
   };
 
   // 상세 모달 상태
-  const [detailItem, setDetailItem] = useState<any>(null);
-  const [showDetail, setShowDetail] = useState(false);
 
   const filtered = filter === 'ALL'
     ? wishlist ?? []
     : (wishlist ?? []).filter((w: any) => w.category === filter);
+
+  // 지도 메모이제이션 (조건부 내부에서 훅 호출 방지)
+  const mapContainerStyle = useMemo(() => ({ width: '100%', height: '100%' }), []);
+  const mapCenter = useMemo(() => (
+    filtered.length > 0 && filtered[0].latitude && filtered[0].longitude
+      ? { lat: filtered[0].latitude, lng: filtered[0].longitude }
+      : { lat: 37.5665, lng: 126.9780 }
+  ), [filtered.length ? filtered[0].id : '']);
 
   const handleCreate = async () => {
     setFormError('');
@@ -604,12 +576,8 @@ export default function WishlistWebScreen() {
           <View style={{ height: 600, width: '100%', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: theme.border }}>
             {isLoaded ? (
               <GoogleMap
-                mapContainerStyle={{ width: '100%', height: '100%' }}
-                center={
-                  filtered.length > 0 && filtered[0].latitude && filtered[0].longitude
-                    ? { lat: filtered[0].latitude, lng: filtered[0].longitude }
-                    : { lat: 37.5665, lng: 126.9780 }
-                }
+                mapContainerStyle={mapContainerStyle}
+                center={mapCenter}
                 zoom={12}
               >
                 {filtered.map((item: any) => (
@@ -674,9 +642,21 @@ export default function WishlistWebScreen() {
                       {item.rating ? <Text style={[styles.metaText, { color: theme.textSecondary }]}>{'⭐'.repeat(Math.min(Math.round(item.rating), 5))}</Text> : null}
                       {item.priceLevel ? <Text style={[styles.metaText, { color: theme.textSecondary }]}>{'💰'.repeat(item.priceLevel)}</Text> : null}
                     </View>
-                    <View style={styles.cardFooter}>
-                      <Text style={[styles.footerText, { color: theme.textTertiary }]}>
-                        👍 {item.voteCount ?? 0} · 💬 {item._count?.comments ?? 0}
+                    <View style={[styles.cardFooter, { flexDirection: 'row', alignItems: 'center', marginTop: 12 }]}>
+                      <Pressable
+                        onPress={(e: any) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          toggleLikeMutation.mutate(item.id);
+                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', cursor: 'pointer', marginRight: 12, opacity: toggleLikeMutation.isPending ? 0.5 : 1 } as any}
+                      >
+                        <Text style={{ fontSize: 13, color: (item.likes && item.likes.length > 0) ? '#ef4444' : theme.textSecondary }}>
+                          {(item.likes && item.likes.length > 0) ? '❤️' : '🤍'} {item._count?.likes ?? 0}
+                        </Text>
+                      </Pressable>
+                      <Text style={{ fontSize: 13, color: theme.textSecondary }}>
+                        💬 {item._count?.comments ?? 0}
                       </Text>
                     </View>
                   </View>
@@ -791,9 +771,9 @@ export default function WishlistWebScreen() {
       {/* 상세 모달 */}
       <DetailModal
         visible={showDetail}
-        item={detailItem}
-        tripId={tripId ?? ''}
+        item={selectedDetailItem}
         onClose={() => { setShowDetail(false); setDetailItem(null); }}
+        tripId={tripId ?? ''}
         isDark={isDark}
         theme={theme}
       />

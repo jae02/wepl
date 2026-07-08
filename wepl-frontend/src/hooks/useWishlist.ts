@@ -23,6 +23,8 @@ export interface WishlistItem {
   createdById: string;
   createdAt: string;
   updatedAt: string;
+  _count?: { comments: number; likes: number };
+  likes?: { id: string }[];
 }
 
 interface CreateWishlistItemRequest {
@@ -114,6 +116,24 @@ export function useRecommendPlaces(tripId: string, lat?: number, lng?: number, r
   });
 }
 
-// 화면에서 사용하는 alias
 export const useAddWishlistItem = useCreateWishlistItem;
+
+/**
+ * 위시리스트 아이템 좋아요 토글
+ */
+export function useToggleLike(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (itemId: string) =>
+      api.post<{ liked: boolean }>(`/api/v1/trips/${tripId}/wishlist/${itemId}/like`),
+    onSuccess: () => {
+      // 위시리스트 관련 쿼리 무효화하여 좋아요 수 업데이트
+      queryClient.invalidateQueries({
+        queryKey: [...wishlistKeys.all, 'list', tripId],
+      });
+      // 단건 조회도 무효화 가능 (필요시 구현)
+    },
+  });
+}
 

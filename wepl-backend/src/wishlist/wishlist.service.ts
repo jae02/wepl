@@ -75,9 +75,9 @@ export class WishlistService {
 
   /**
    * 여행의 위시리스트 장소 목록 조회
-   * 카테고리, isPlaced 필터 지원 / 작성자 정보 + 댓글 수 포함
+   * 카테고리, isPlaced 필터 지원 / 작성자 정보 + 댓글 수, 좋아요 수, 본인 좋아요 여부 포함
    */
-  async findAllByTrip(tripId: string, query?: WishlistQueryDto) {
+  async findAllByTrip(tripId: string, query: WishlistQueryDto | undefined, userId: string) {
     // 동적 where 조건 구성
     const where: Prisma.WishlistPlaceWhereInput = { tripId };
 
@@ -99,7 +99,11 @@ export class WishlistService {
           },
         },
         _count: {
-          select: { comments: true },
+          select: { comments: true, likes: true },
+        },
+        likes: {
+          where: { userId },
+          select: { id: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -110,7 +114,7 @@ export class WishlistService {
    * 위시리스트 장소 단건 조회
    * 작성자 정보 + 1단계 댓글(대댓글 제외) 포함
    */
-  async findOne(id: string) {
+  async findOne(id: string, userId: string) {
     const place = await this.prisma.wishlistPlace.findUnique({
       where: { id },
       include: {
@@ -133,6 +137,13 @@ export class WishlistService {
             },
           },
           orderBy: { createdAt: 'asc' },
+        },
+        _count: {
+          select: { likes: true, comments: true },
+        },
+        likes: {
+          where: { userId },
+          select: { id: true },
         },
       },
     });
@@ -201,19 +212,62 @@ export class WishlistService {
   }
 
   /**
+   * 좋아요 토글 (Like / Unlike)
+   */
+  async toggleLike(wishlistId: string, userId: string) {
+    const existing = await this.prisma.wishlistPlace.findUnique({
+      where: { id: wishlistId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('위시리스트 장소를 찾을 수 없습니다.');
+    }
+
+    const like = await this.prisma.wishlistLike.findUnique({
+      where: {
+        wishlistPlaceId_userId: {
+          wishlistPlaceId: wishlistId,
+          userId,
+        },
+      },
+    });
+
+    if (like) {
+      // 이미 있으면 취소
+      await this.prisma.wishlistLike.delete({
+        where: { id: like.id },
+      });
+    } else {
+      // 없으면 생성
+      await this.prisma.wishlistLike.create({
+        data: {
+          wishlistPlaceId: wishlistId,
+          userId,
+        },
+      });
+    }
+
+    this.syncGateway.server.to(`trip_${existing.tripId}`).emit('wishlistUpdated');
+
+    return { liked: !like };
+  }
+
+  /**
    * 위치 기반 추천 장소 (Haversine formula)
    */
   async recommendPlaces(tripId: string, lat: number, lng: number, radiusMeters: number) {
     const places = await this.prisma.$queryRaw`
       SELECT * FROM (
-        SELECT id, name, address, latitude, longitude, category, "imageUrl",
+        SELECT id, name, address, latitude, longitude, category, "image_url" AS "imageUrl",
           (6371000 * acos(
-            cos(radians(${lat})) * cos(radians(latitude)) * 
-            cos(radians(longitude) - radians(${lng})) + 
-            sin(radians(${lat})) * sin(radians(latitude))
+            LEAST(1.0, GREATEST(-1.0,
+              cos(radians(${lat}::float)) * cos(radians(latitude)) * 
+              cos(radians(longitude) - radians(${lng}::float)) + 
+              sin(radians(${lat}::float)) * sin(radians(latitude))
+            ))
           )) AS distance
-        FROM "WishlistPlace"
-        WHERE "tripId" = ${tripId}
+        FROM "wishlist_places"
+        WHERE "trip_id" = ${tripId}
           AND latitude IS NOT NULL
           AND longitude IS NOT NULL
       ) AS sub

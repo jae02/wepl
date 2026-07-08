@@ -54,8 +54,9 @@ export class WishlistController {
   async findAll(
     @Param('tripId') tripId: string,
     @Query() query: WishlistQueryDto,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.wishlistService.findAllByTrip(tripId, query);
+    return this.wishlistService.findAllByTrip(tripId, query, user.id);
   }
 
   /**
@@ -73,7 +74,7 @@ export class WishlistController {
       tripId,
       parseFloat(lat),
       parseFloat(lng),
-      radius ? parseFloat(radius) : 5000,
+      radius ? parseFloat(radius) : 1000,
     );
   }
 
@@ -82,8 +83,23 @@ export class WishlistController {
    * 위시리스트 장소 상세 조회 (댓글 포함)
    */
   @Get(':wishlistId')
-  async findOne(@Param('wishlistId') wishlistId: string) {
-    return this.wishlistService.findOne(wishlistId);
+  async findOne(
+    @Param('wishlistId') wishlistId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.wishlistService.findOne(wishlistId, user.id);
+  }
+
+  /**
+   * POST /api/v1/trips/:tripId/wishlist/:wishlistId/like
+   * 위시리스트 장소 좋아요 토글
+   */
+  @Post(':wishlistId/like')
+  async toggleLike(
+    @Param('wishlistId') wishlistId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.wishlistService.toggleLike(wishlistId, user.id);
   }
 
   /**
@@ -110,7 +126,7 @@ export class WishlistController {
     @Req() req: any,
   ) {
     // 삭제할 장소 정보를 먼저 조회하여 작성자 확인
-    const place = await this.wishlistService.findOne(wishlistId);
+    const place = await this.wishlistService.findOne(wishlistId, user.id);
 
     // 작성자 본인이 아니고, 방장도 아닌 경우 삭제 불가
     const isCreator = place.createdById === user.id;

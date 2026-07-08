@@ -3,6 +3,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useTrips } from '@/hooks/useTrips';
+import { useMemo } from 'react';
 
 /** 프로필 화면 */
 export default function ProfileScreen() {
@@ -12,6 +14,21 @@ export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { isDesktop, isWeb } = useResponsive();
+  const { data: trips } = useTrips();
+
+  const tripStats = useMemo(() => {
+    if (!trips || !Array.isArray(trips)) {
+      return { total: 0, upcoming: 0, completed: 0 };
+    }
+    const now = new Date();
+    const upcoming = trips.filter((trip) => new Date(trip.startDate) > now).length;
+    const completed = trips.filter((trip) => new Date(trip.endDate) < now).length;
+    return {
+      total: trips.length,
+      upcoming,
+      completed,
+    };
+  }, [trips]);
 
   const initial = user?.nickname?.charAt(0)?.toUpperCase() ?? '?';
 
@@ -53,6 +70,25 @@ export default function ProfileScreen() {
           <Text style={[styles.email, { color: ds.textSecondary }]}>
             {user?.email ?? ''}
           </Text>
+        </View>
+
+        {/* 통계 카드 */}
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { backgroundColor: ds.cardBg, borderColor: ds.cardBorder }]}>
+            <Text style={styles.statEmoji}>📋</Text>
+            <Text style={[styles.statValue, { color: ds.textPrimary }]}>{tripStats.total}</Text>
+            <Text style={[styles.statLabel, { color: ds.textSecondary }]}>내 여행 수</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: ds.cardBg, borderColor: ds.cardBorder }]}>
+            <Text style={styles.statEmoji}>✈️</Text>
+            <Text style={[styles.statValue, { color: ds.textPrimary }]}>{tripStats.upcoming}</Text>
+            <Text style={[styles.statLabel, { color: ds.textSecondary }]}>다가오는 여행</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: ds.cardBg, borderColor: ds.cardBorder }]}>
+            <Text style={styles.statEmoji}>📅</Text>
+            <Text style={[styles.statValue, { color: ds.textPrimary }]}>{tripStats.completed}</Text>
+            <Text style={[styles.statLabel, { color: ds.textSecondary }]}>완료된 여행</Text>
+          </View>
         </View>
 
         {/* 정보 카드 */}
@@ -140,6 +176,31 @@ const styles = StyleSheet.create({
   },
   email: {
     fontSize: 14,
+    fontWeight: '500',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  statEmoji: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
     fontWeight: '500',
   },
   infoCard: {

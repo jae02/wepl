@@ -150,8 +150,8 @@ export default function TabLayout() {
         options={{
           title: '홈',
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-              <Text style={[styles.icon, focused && styles.iconActive]}>🏠</Text>
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive] as any}>
+              <Text style={[styles.icon, focused && styles.iconActive] as any}>🏠</Text>
             </View>
           ),
         }}
@@ -161,8 +161,8 @@ export default function TabLayout() {
         options={{
           title: '프로필',
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-              <Text style={[styles.icon, focused && styles.iconActive]}>👤</Text>
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive] as any}>
+              <Text style={[styles.icon, focused && styles.iconActive] as any}>👤</Text>
             </View>
           ),
         }}
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   desktopContainer: {
     flex: 1,
     flexDirection: 'row',
-    height: Platform.OS === 'web' ? '100vh' : '100%',
+    height: Platform.OS === 'web' ? '100%' : '100%',
     overflow: 'hidden',
   },
   sidebar: {

@@ -125,7 +125,7 @@ export default function TripDetailLayout() {
                       activeTab === tab.key ? '#667eea' : ds.textSecondary,
                     fontWeight: activeTab === tab.key ? '700' : '500',
                   },
-                ]}
+                ] as any}
               >
                 {tab.icon} {tab.label}
               </Text>
@@ -135,7 +135,7 @@ export default function TripDetailLayout() {
       </View>
 
       {/* 탭 콘텐츠 */}
-      <View style={styles.content}>
+      <View style={styles.content as any}>
         <Slot />
       </View>
     </View>
@@ -145,7 +145,7 @@ export default function TripDetailLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    height: Platform.OS === 'web' ? '100vh' : '100%',
+    height: Platform.OS === 'web' ? '100%' : '100%',
     overflow: 'hidden',
   },
   header: {

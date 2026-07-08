@@ -29,6 +29,7 @@ model User {
   // Relations
   tripMembers     TripMember[]
   wishlistPlaces  WishlistPlace[]
+  wishlistLikes   WishlistLike[]
   comments        Comment[]
   expenses        Expense[]       // 결제자로서의 지출
   expenseSplits   ExpenseSplit[]  // 정산 대상으로서의 분담
@@ -128,11 +129,25 @@ model WishlistPlace {
   trip      Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   createdBy User   @relation(fields: [createdById], references: [id])
   comments  Comment[]
+  likes     WishlistLike[]
   schedules TimelineSchedule[]
 
   @@index([tripId, category])
   @@index([tripId, isPlaced])
   @@map("wishlist_places")
+}
+
+model WishlistLike {
+  id              String   @id @default(cuid())
+  wishlistPlaceId String   @map("wishlist_place_id")
+  userId          String   @map("user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  wishlistPlace   WishlistPlace @relation(fields: [wishlistPlaceId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([wishlistPlaceId, userId])
+  @@map("wishlist_likes")
 }
 
 enum PlaceCategory {

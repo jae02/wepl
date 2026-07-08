@@ -14,7 +14,12 @@ import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSchedules } from '@/hooks/useSchedules';
+import { useWishlist } from '@/hooks/useWishlist';
 import { useResponsive } from '@/hooks/useResponsive';
+import { LinearGradient } from 'expo-linear-gradient';
+import ScheduleCreateModal from '@/components/timeline/ScheduleCreateModal';
+import ScheduleDetailModal from '@/components/timeline/ScheduleDetailModal';
+import TimelineMapView from '@/components/timeline/TimelineMapView';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   PLANNED: { label: '예정', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
@@ -42,6 +47,11 @@ export default function TimelineScreen() {
   const { isDesktop, isWeb } = useResponsive();
 
   const { data: schedules, isLoading, refetch, isRefetching } = useSchedules(tripId);
+  const { data: wishlistItems } = useWishlist(tripId);
+
+  const [isMapView, setIsMapView] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<any | null>(null);
 
   // 날짜 목록 생성
   const dates = useMemo(() => {
@@ -110,7 +120,8 @@ export default function TimelineScreen() {
         </View>
 
         {/* 카드 */}
-        <View
+        <Pressable
+          onPress={() => setSelectedSchedule(item)}
           style={[
             styles.scheduleCard,
             { backgroundColor: ds.cardBg, borderColor: ds.cardBorder },
@@ -173,7 +184,7 @@ export default function TimelineScreen() {
               </View>
             </View>
           )}
-        </View>
+        </Pressable>
       </View>
     );
   };
@@ -197,8 +208,20 @@ export default function TimelineScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: ds.bg }, isDesktop && styles.desktopPageContainer]}>
+      {/* 뷰 토글 */}
+      <View style={styles.topBar}>
+        <View style={styles.viewToggle}>
+          <Pressable onPress={() => setIsMapView(false)} style={[styles.toggleBtn, !isMapView && styles.toggleBtnActive]}>
+            <Text style={[styles.toggleBtnText, !isMapView && styles.toggleBtnTextActive]}>📋 목록</Text>
+          </Pressable>
+          <Pressable onPress={() => setIsMapView(true)} style={[styles.toggleBtn, isMapView && styles.toggleBtnActive]}>
+            <Text style={[styles.toggleBtnText, isMapView && styles.toggleBtnTextActive]}>🗺️ 지도</Text>
+          </Pressable>
+        </View>
+      </View>
+
       {/* 날짜 선택 */}
-      {dates.length > 0 && (
+      {!isMapView && dates.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -249,6 +272,25 @@ export default function TimelineScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#667eea" />
         </View>
+      ) : isMapView ? (
+        <TimelineMapView 
+          schedules={filteredSchedules.map((s: any) => ({
+            id: s.id,
+            title: s.customTitle || s.wishlistPlace?.name || '일정',
+            latitude: s.wishlistPlace?.latitude ?? null,
+            longitude: s.wishlistPlace?.longitude ?? null,
+            startTime: s.startTime || '',
+            status: s.status,
+          }))} 
+          unassignedWishlist={(wishlistItems ?? []).map((w: any) => ({
+            id: w.id,
+            name: w.name,
+            latitude: w.latitude ?? null,
+            longitude: w.longitude ?? null,
+            category: w.category,
+          }))}
+          onScheduleCalloutPress={(item) => setSelectedSchedule(schedules?.find((s: any) => s.id === item.id))}
+        />
       ) : (
         <FlatList
           data={filteredSchedules}
@@ -271,6 +313,33 @@ export default function TimelineScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* FAB 추가 버튼 */}
+      <Pressable
+        onPress={() => setShowCreateModal(true)}
+        style={[styles.fab, { bottom: 24 + insets.bottom }, isWeb && ({ cursor: 'pointer' } as any)]}
+      >
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={styles.fabGradient}
+        >
+          <Text style={styles.fabIcon}>＋</Text>
+        </LinearGradient>
+      </Pressable>
+
+      <ScheduleCreateModal
+        tripId={tripId}
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        initialDate={activeDate ?? undefined}
+      />
+
+      <ScheduleDetailModal
+        tripId={tripId}
+        schedule={selectedSchedule}
+        visible={!!selectedSchedule}
+        onClose={() => setSelectedSchedule(null)}
+      />
     </View>
   );
 }
@@ -278,6 +347,40 @@ export default function TimelineScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  topBar: {
+    paddingTop: 10,
+    backgroundColor: 'transparent',
+  },
+  viewToggle: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 10,
+    backgroundColor: 'rgba(128,128,128,0.1)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#888',
+  },
+  toggleBtnTextActive: {
+    color: '#1a1a2e',
   },
   dateSelectorScroll: {
     flexGrow: 0,
@@ -417,6 +520,30 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  // FAB
+  fab: {
+    position: 'absolute',
+    right: 20,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  fabGradient: {
+    width: 56,
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabIcon: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '300',
+    marginTop: -2,
   },
   // 데스크톱 반응형 스타일
   desktopPageContainer: {
